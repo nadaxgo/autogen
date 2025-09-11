@@ -106,7 +106,11 @@ def build_manager() -> tuple[UserProxyAgent, GroupChatManager]:
         llm_config=LLM_CONFIG,
     )
 
-    user = UserProxyAgent(name="用户", human_input_mode="NEVER")
+    user = UserProxyAgent(
+        name="用户",
+        human_input_mode="NEVER",
+        code_execution_config={"use_docker": False},
+    )
     groupchat = GroupChat(
         agents=[user, joy, sadness, anger, fear, disgust],
         messages=[],
