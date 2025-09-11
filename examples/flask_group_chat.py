@@ -114,7 +114,9 @@ def build_manager() -> tuple[UserProxyAgent, GroupChatManager]:
     groupchat = GroupChat(
         agents=[user, joy, sadness, anger, fear, disgust],
         messages=[],
-        max_round=20,
+        max_round=6,
+        speaker_selection_method="round_robin",
+        allow_repeat_speaker=False,
     )
     manager = GroupChatManager(groupchat, llm_config=LLM_CONFIG)
     return user, manager
@@ -145,8 +147,9 @@ def send_message():
 
     user: UserProxyAgent = session["user"]
     manager: GroupChatManager = session["manager"]
-    result = user.initiate_chat(manager, message=message, clear_history=False)
-    return jsonify({"reply": result.summary})
+    user.initiate_chat(manager, message=message, clear_history=False)
+    replies = manager.groupchat.messages[-5:]
+    return jsonify({"replies": [{"name": m["name"], "content": m["content"]} for m in replies]})
 
 
 if __name__ == "__main__":
