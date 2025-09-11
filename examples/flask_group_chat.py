@@ -15,14 +15,11 @@ from autogen import (
     UserProxyAgent,
 )
 
-
 LLM_CONFIG: Dict = {
     "config_list": [
         {
             "model": "doubao-seed-1-6-250615",
-            "api_key": os.getenv(
-                "VOLCES_API_KEY", "5faffe1c-b851-47f5-887d-357038eedd2a"
-            ),
+            "api_key": os.getenv("VOLCES_API_KEY", "5faffe1c-b851-47f5-887d-357038eedd2a"),
             "base_url": "https://ark.cn-beijing.volces.com/api/v3",
         }
     ],
