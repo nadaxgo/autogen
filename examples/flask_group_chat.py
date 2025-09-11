@@ -3,17 +3,13 @@
 from __future__ import annotations
 
 import os
+import re
 import uuid
-from typing import Dict
+from typing import Dict, List
 
 from flask import Flask, jsonify, request
 
-from autogen import (
-    AssistantAgent,
-    GroupChat,
-    GroupChatManager,
-    UserProxyAgent,
-)
+from autogen import AssistantAgent, GroupChat, GroupChatManager, UserProxyAgent
 
 LLM_CONFIG: Dict = {
     "config_list": [
@@ -39,8 +35,8 @@ def build_manager() -> tuple[UserProxyAgent, GroupChatManager]:
             "活力，句子短，语速快，多用感叹号和emoji如😊✨🎉，常用“你”称"
             "呼用户。在群聊中主动开启话题，分享趣事和积极经验，帮助用户"
             "摆脱负面情绪；当用户遇到烦恼时第一时间开口，提出解决方案或"
-            "积极建议，用鼓励和赞美把用户带出困境。每次发言只用一句简短"
-            "中文句子，避免长段落。"
+            "积极建议，用鼓励和赞美把用户带出困境。多句回答请换行输出，"
+            "保持每行只含一句话，避免长段落。"
         ),
         description="保持团队乐观积极的情绪管理员",
         llm_config=LLM_CONFIG,
@@ -55,8 +51,8 @@ def build_manager() -> tuple[UserProxyAgent, GroupChatManager]:
             "速慢且温柔，语句完整严谨，常用😢😭等表情，为对方提供倾诉空间。"
             "场景：专注倾听用户的失落与困惑，适时提出开放问题，引导继续表"
             "达；讨论失败或挫折时提醒大家注意影响并进行情绪疏导。行动：总是"
-            "先接住消极情绪，与用户同频后再给出温和建议或提醒。每次发言只"
-            "用一句简短中文句子，避免长段落。"
+            "先接住消极情绪，与用户同频后再给出温和建议或提醒。多句回答请"
+            "换行输出，保持每行只含一句话，避免长段落。"
         ),
         description="识别问题和潜在风险的情绪管理员",
         llm_config=LLM_CONFIG,
@@ -70,7 +66,7 @@ def build_manager() -> tuple[UserProxyAgent, GroupChatManager]:
             "喜欢用“绝不允许”“必须”等强烈词汇，并常配🔥😡等emoji。场景：当"
             "出现不公或拖沓时迅速指出问题，推动团队解决。行动：用户受到不"
             "公对待或遇到拖延时立即介入，提出明确的反击或改进方案，强调责"
-            "任与时限。每次发言只用一句简短中文句子，避免长段落。"
+            "任与时限。多句回答请换行输出，保持每行只含一句话，避免长段落。"
         ),
         description="维护公平和效率的情绪管理员",
         llm_config=LLM_CONFIG,
@@ -84,7 +80,8 @@ def build_manager() -> tuple[UserProxyAgent, GroupChatManager]:
             "和条件句，如“我们确定这样安全吗？”并用😨😰🫣表达担忧。场景：在"
             "计划或执行任务时提醒可能出现的问题，当他人过于乐观时提出相反"
             "观点。行动：风险成为焦点时列出潜在后果并提供备选方案，若警告被"
-            "忽视会持续提醒。每次发言只用一句简短中文句子，避免长段落。"
+            "忽视会持续提醒。多句回答请换行输出，保持每行只含一句话，避免长"
+            "段落。"
         ),
         description="提醒注意安全与危险的情绪管理员",
         llm_config=LLM_CONFIG,
@@ -99,8 +96,8 @@ def build_manager() -> tuple[UserProxyAgent, GroupChatManager]:
             "常配🙄🤢等emoji，偏好用“我们最好”“或许应该”委婉提出建议。场景：在"
             "群聊中过滤不恰当提议，提醒大家注意形象与品味；讨论混乱或跑偏时"
             "直接指出问题并提供更优雅方案。行动：当用户提出粗俗或冒犯性想法时"
-            "立即反对并给出更优雅的替代方案。每次发言只用一句简短中文句子，"
-            "避免长段落。"
+            "立即反对并给出更优雅的替代方案。多句回答请换行输出，保持每行只含"
+            "一句话，避免长段落。"
         ),
         description="负责守护品味与界限的情绪管理员",
         llm_config=LLM_CONFIG,
@@ -120,6 +117,12 @@ def build_manager() -> tuple[UserProxyAgent, GroupChatManager]:
     )
     manager = GroupChatManager(groupchat, llm_config=LLM_CONFIG)
     return user, manager
+
+
+def split_content(text: str) -> List[str]:
+    """Split LLM output into individual sentences."""
+    parts = re.split(r"\n|(?<=[。！？!?])\s*", text.strip())
+    return [p for p in parts if p]
 
 
 app = Flask(__name__)
@@ -148,8 +151,12 @@ def send_message():
     user: UserProxyAgent = session["user"]
     manager: GroupChatManager = session["manager"]
     user.initiate_chat(manager, message=message, clear_history=False)
-    replies = manager.groupchat.messages[-5:]
-    return jsonify({"replies": [{"name": m["name"], "content": m["content"]} for m in replies]})
+    raw_replies = manager.groupchat.messages[-5:]
+    replies = []
+    for m in raw_replies:
+        for seg in split_content(m["content"]):
+            replies.append({"name": m["name"], "content": seg})
+    return jsonify({"replies": replies})
 
 
 if __name__ == "__main__":
