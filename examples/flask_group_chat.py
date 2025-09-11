@@ -18,9 +18,9 @@ from autogen import (
 LLM_CONFIG: Dict = {
     "config_list": [
         {
-            "model": "doubao-seed-1-6-250615",
-            "api_key": os.getenv("VOLCES_API_KEY", "5faffe1c-b851-47f5-887d-357038eedd2a"),
-            "base_url": "https://ark.cn-beijing.volces.com/api/v3",
+            "model": os.getenv("DOUBAO_MODEL", "doubao-seed-1-6-250615"),
+            "api_key": os.getenv("DOUBAO_API_KEY", "5faffe1c-b851-47f5-887d-357038eedd2a"),
+            "base_url": os.getenv("DOUBAO_BASE_URL", "https://ark.cn-beijing.volces.com/api/v3"),
         }
     ],
     "temperature": 0.3,
