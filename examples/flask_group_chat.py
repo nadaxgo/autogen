@@ -142,11 +142,42 @@ STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
 app = Flask(__name__, static_folder=STATIC_DIR, static_url_path="")
 sessions: Dict[str, Dict[str, object]] = {}
 
+# Store uploaded avatar images under examples/static/avatars.
+AVATAR_DIR = os.path.join(STATIC_DIR, "avatars")
+os.makedirs(AVATAR_DIR, exist_ok=True)
+
 
 @app.get("/")
 def index():
     """Serve the demo webpage."""
     return app.send_static_file("index.html")
+
+
+@app.get("/avatars")
+def list_avatars() -> Response:
+    """Return mapping of avatar name to static URL if uploaded."""
+    files = {}
+    for fname in os.listdir(AVATAR_DIR):
+        path = os.path.join(AVATAR_DIR, fname)
+        if os.path.isfile(path):
+            name, _ = os.path.splitext(fname)
+            files[name] = f"/avatars/{fname}"
+    return jsonify(files)
+
+
+@app.post("/avatars/<name>")
+def upload_avatar(name: str) -> Response:
+    """Save an uploaded avatar image for the given name."""
+    file = request.files.get("file")
+    if file is None:
+        return jsonify({"error": "no file"}), 400
+    # Sanitize name to avoid directory traversal and keep it stable.
+    safe_name = re.sub(r"[^\w\u4e00-\u9fff-]", "_", name)
+    ext = os.path.splitext(file.filename)[1] or ".png"
+    fname = f"{safe_name}{ext}"
+    path = os.path.join(AVATAR_DIR, fname)
+    file.save(path)
+    return jsonify({"url": f"/avatars/{fname}"})
 
 
 @app.post("/chat/start")
