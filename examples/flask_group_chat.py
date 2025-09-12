@@ -16,9 +16,11 @@ LLM_CONFIG: Dict = {
         {
             "model": os.getenv("DOUBAO_MODEL", "doubao-seed-1-6-250615"),
             "api_key": os.getenv("DOUBAO_API_KEY", "5faffe1c-b851-47f5-887d-357038eedd2a"),
+            # Doubao uses OpenAI-compatible /chat/completions under /api/v3.
+            # Provide the root API URL so the client can append the endpoint.
             "base_url": os.getenv(
                 "DOUBAO_BASE_URL",
-                "https://ark.cn-beijing.volces.com/api/v3/chat/completions",
+                "https://ark.cn-beijing.volces.com/api/v3",
             ),
         }
     ],
