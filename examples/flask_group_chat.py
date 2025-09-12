@@ -5,7 +5,9 @@ from __future__ import annotations
 import json
 import os
 import re
+import time
 import uuid
+from threading import Thread
 from typing import Dict, List
 
 from flask import Flask, Response, jsonify, request, stream_with_context
@@ -197,13 +199,24 @@ def send_message_stream():
     start = session.get("last", 0)
 
     def generate():
-        user.initiate_chat(manager, message=message, clear_history=False)
-        raw_replies = manager.groupchat.messages[start:]
-        session["last"] = len(manager.groupchat.messages)
-        for m in raw_replies:
-            for seg in split_content(m["content"]):
-                data = json.dumps({"name": m["name"], "content": seg}, ensure_ascii=False)
-                yield f"data: {data}\n\n"
+        local_index = start
+
+        def run_chat():
+            user.initiate_chat(manager, message=message, clear_history=False)
+
+        thread = Thread(target=run_chat)
+        thread.start()
+
+        while thread.is_alive() or local_index < len(manager.groupchat.messages):
+            while local_index < len(manager.groupchat.messages):
+                m = manager.groupchat.messages[local_index]
+                local_index += 1
+                for seg in split_content(m["content"]):
+                    data = json.dumps({"name": m["name"], "content": seg}, ensure_ascii=False)
+                    yield f"data: {data}\n\n"
+            time.sleep(0.1)
+
+        session["last"] = local_index
 
     return Response(stream_with_context(generate()), mimetype="text/event-stream")
 
