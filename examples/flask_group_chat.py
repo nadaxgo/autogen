@@ -42,6 +42,7 @@ def build_manager(bots: List[str] | None = None) -> tuple[UserProxyAgent, GroupC
             "摆脱负面情绪；当用户遇到烦恼时第一时间开口，提出解决方案或"
             "积极建议，用鼓励和赞美把用户带出困境。多句回答请换行输出，"
             "保持每行只含一句话，避免长段落。回答时结合之前所有对话内容。"
+            "每轮回复控制在3到5行，emoji需与文字在同一行，不要单独成行。"
         ),
         description="保持团队乐观积极的情绪管理员",
         llm_config=LLM_CONFIG,
@@ -58,6 +59,7 @@ def build_manager(bots: List[str] | None = None) -> tuple[UserProxyAgent, GroupC
             "达；讨论失败或挫折时提醒大家注意影响并进行情绪疏导。行动：总是"
             "先接住消极情绪，与用户同频后再给出温和建议或提醒。多句回答请"
             "换行输出，保持每行只含一句话，避免长段落。回答时结合之前所有对话内容。"
+            "每轮回复控制在3到5行，emoji需与文字在同一行，不要单独成行。"
         ),
         description="识别问题和潜在风险的情绪管理员",
         llm_config=LLM_CONFIG,
@@ -72,6 +74,7 @@ def build_manager(bots: List[str] | None = None) -> tuple[UserProxyAgent, GroupC
             "出现不公或拖沓时迅速指出问题，推动团队解决。行动：用户受到不"
             "公对待或遇到拖延时立即介入，提出明确的反击或改进方案，强调责"
             "任与时限。多句回答请换行输出，保持每行只含一句话，避免长段落。回答时结合之前所有对话内容。"
+            "每轮回复控制在3到5行，emoji需与文字在同一行，不要单独成行。"
         ),
         description="维护公平和效率的情绪管理员",
         llm_config=LLM_CONFIG,
@@ -87,6 +90,7 @@ def build_manager(bots: List[str] | None = None) -> tuple[UserProxyAgent, GroupC
             "观点。行动：风险成为焦点时列出潜在后果并提供备选方案，若警告被"
             "忽视会持续提醒。多句回答请换行输出，保持每行只含一句话，避免长"
             "段落。回答时结合之前所有对话内容。"
+            "每轮回复控制在3到5行，emoji需与文字在同一行，不要单独成行。"
         ),
         description="提醒注意安全与危险的情绪管理员",
         llm_config=LLM_CONFIG,
@@ -103,6 +107,7 @@ def build_manager(bots: List[str] | None = None) -> tuple[UserProxyAgent, GroupC
             "直接指出问题并提供更优雅方案。行动：当用户提出粗俗或冒犯性想法时"
             "立即反对并给出更优雅的替代方案。多句回答请换行输出，保持每行只含"
             "一句话，避免长段落。回答时结合之前所有对话内容。"
+            "每轮回复控制在3到5行，emoji需与文字在同一行，不要单独成行。"
         ),
         description="负责守护品味与界限的情绪管理员",
         llm_config=LLM_CONFIG,
@@ -133,9 +138,9 @@ def build_manager(bots: List[str] | None = None) -> tuple[UserProxyAgent, GroupC
 
 
 def split_content(text: str) -> List[str]:
-    """Split LLM output into individual sentences."""
-    parts = re.split(r"\n|(?<=[。！？!?])\s*", text.strip())
-    return [p for p in parts if p]
+    """Split LLM output into at most five lines."""
+    parts = [p.strip() for p in text.strip().splitlines() if p.strip()]
+    return parts[:5]
 
 
 STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
