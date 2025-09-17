@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8" />
+  <title>头脑特工队聊天室</title>
+    <style>
+      body { font-family: sans-serif; margin:0; padding:0; height:100vh; display:flex; flex-direction:column; background:#f5f5f5; }
+      #lobby, #chat { margin:auto; width:90%; max-width:600px; flex:1; display:flex; flex-direction:column; }
+      #messages { flex:1; overflow-y:auto; padding:10px; }
+      .message { display:flex; align-items:flex-end; margin:8px 0; }
+      .message.user { flex-direction:row-reverse; }
+      .bubble { padding:8px 12px; border-radius:8px; max-width:75%; word-break:break-word; }
+      .user .bubble { background:#DCF8C6; }
+      .bot .bubble { background:#fff; border:1px solid #ccc; }
+      .name { font-size:0.75em; color:#666; margin-bottom:2px; }
+      .avatar { width:32px; height:32px; border-radius:50%; overflow:hidden; display:flex; align-items:center; justify-content:center; background:#ddd; font-size:20px; }
+      .avatar img { width:100%; height:100%; object-fit:cover; }
+      .preview { width:32px; height:32px; border-radius:50%; object-fit:cover; vertical-align:middle; margin-left:4px; }
+      #input { flex:1; padding:8px; }
+      #send { padding:8px 12px; }
+    </style>
+</head>
+<body>
+  <div id="lobby">
+    <h2>选择情绪角色</h2>
+    <label>我的头像 <input type="file" id="user-avatar" accept="image/*"><img data-preview="我" class="preview"></label>
+    <div id="bots">
+      <div><label><input type="checkbox" value="乐乐" checked> 乐乐</label> <input type="file" accept="image/*" data-avatar="乐乐"><img data-preview="乐乐" class="preview"></div>
+      <div><label><input type="checkbox" value="忧忧" checked> 忧忧</label> <input type="file" accept="image/*" data-avatar="忧忧"><img data-preview="忧忧" class="preview"></div>
+      <div><label><input type="checkbox" value="怒怒" checked> 怒怒</label> <input type="file" accept="image/*" data-avatar="怒怒"><img data-preview="怒怒" class="preview"></div>
+      <div><label><input type="checkbox" value="恐恐" checked> 恐恐</label> <input type="file" accept="image/*" data-avatar="恐恐"><img data-preview="恐恐" class="preview"></div>
+      <div><label><input type="checkbox" value="厌厌" checked> 厌厌</label> <input type="file" accept="image/*" data-avatar="厌厌"><img data-preview="厌厌" class="preview"></div>
+    </div>
+    <button id="join">进入聊天室</button>
+  </div>
+  <div id="chat" style="display:none; flex:1;">
+    <div id="messages"></div>
+    <div id="input-area" style="display:flex; gap:4px; margin:10px 0;">
+      <input id="input" placeholder="说点什么..." />
+      <button id="send">发送</button>
+    </div>
+  </div>
+
+<script>
+let sessionId = null;
+const avatars = {};
+const defaultAvatars = { '我':'🙂','乐乐':'😊','忧忧':'😢','怒怒':'😡','恐恐':'😨','厌厌':'🙄' };
+async function loadAvatars(){
+  const resp = await fetch('/avatars');
+  if(!resp.ok) return;
+  const data = await resp.json();
+  Object.assign(avatars, data);
+  for(const [name,url] of Object.entries(data)){
+    const img=document.querySelector(`img[data-preview="${name}"]`);
+    if(img){ img.src=url; }
+  }
+}
+async function joinChat(){
+  const selected = [];
+  const uploads = [];
+  document.querySelectorAll('#bots div').forEach(div=>{
+    const box = div.querySelector('input[type=checkbox]');
+    if(box.checked){ selected.push(box.value); }
+    const f = div.querySelector('input[type=file]');
+    if(f.files[0]){ uploads.push(uploadAvatar(box.value, f.files[0])); }
+  });
+  const userFile = document.getElementById('user-avatar');
+  if(userFile.files[0]){ uploads.push(uploadAvatar('我', userFile.files[0])); }
+  await Promise.all(uploads);
+  const resp = await fetch('/chat/start', {
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({bots: selected})
+  });
+  const data = await resp.json();
+  sessionId = data.session_id;
+  document.getElementById('lobby').style.display='none';
+  document.getElementById('chat').style.display='block';
+  document.getElementById('input').focus();
+}
+async function sendMessage(){
+  const input = document.getElementById('input');
+  const text = input.value.trim();
+  if(!text) return;
+  appendMessage('我', text);
+  input.value='';
+  const area=document.getElementById('input-area');
+  area.style.display='none';
+  const resp = await fetch('/chat/send_stream', {
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({session_id: sessionId, message: text})
+  });
+  const reader = resp.body.getReader();
+  const decoder = new TextDecoder('utf-8');
+  let buf='';
+  while(true){
+    const {value, done} = await reader.read();
+    if(done) break;
+    buf += decoder.decode(value, {stream:true});
+    const parts = buf.split('\n\n');
+    buf = parts.pop();
+    for(const part of parts){
+      if(part.startsWith('data:')){
+        const data = JSON.parse(part.slice(5));
+        appendMessage(data.name, data.content);
+      }
+    }
+  }
+  area.style.display='flex';
+}
+function appendMessage(name, content){
+  const container=document.createElement('div');
+  const messages=document.getElementById('messages');
+  const isUser=name==='我';
+  container.className='message '+(isUser?'user':'bot');
+  const avatar=document.createElement('div');
+  avatar.className='avatar';
+  if(avatars[name]){
+    const img=document.createElement('img');
+    img.src=avatars[name];
+    avatar.appendChild(img);
+  }else{
+    avatar.textContent=defaultAvatars[name]||'👤';
+  }
+  const bubble=document.createElement('div');
+  bubble.className='bubble';
+  bubble.textContent=content;
+  if(isUser){
+    container.appendChild(bubble);
+    container.appendChild(avatar);
+  }else{
+    container.appendChild(avatar);
+    const nameLabel=document.createElement('div');
+    nameLabel.className='name';
+    nameLabel.textContent=name;
+    bubble.prepend(nameLabel);
+    container.appendChild(bubble);
+  }
+  messages.appendChild(container);
+  messages.scrollTop = messages.scrollHeight;
+}
+
+document.getElementById('join').onclick = joinChat;
+document.getElementById('send').onclick = sendMessage;
+document.getElementById('input').addEventListener('keydown', e=>{if(e.key==='Enter'){sendMessage();}});
+document.addEventListener('DOMContentLoaded', loadAvatars);
+document.getElementById('user-avatar').addEventListener('change', e=>{
+  const file=e.target.files[0];
+  const img=document.querySelector('img[data-preview="我"]');
+  if(file && img){ img.src=URL.createObjectURL(file); }
+});
+document.querySelectorAll('input[type=file][data-avatar]').forEach(inp=>{
+  inp.addEventListener('change', e=>{
+    const file=e.target.files[0];
+    const name=e.target.getAttribute('data-avatar');
+    const img=document.querySelector(`img[data-preview="${name}"]`);
+    if(file && img){ img.src=URL.createObjectURL(file); }
+  });
+});
+
+async function uploadAvatar(name, file){
+  const fd=new FormData();
+  fd.append('file', file);
+  const resp=await fetch('/avatars/'+encodeURIComponent(name),{method:'POST', body:fd});
+  if(resp.ok){ const data=await resp.json(); avatars[name]=data.url; }
+}
+</script>
+</body>
+</html>
