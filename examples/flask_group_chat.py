@@ -8,7 +8,6 @@ import re
 import threading
 import time
 import uuid
-from copy import deepcopy
 from typing import Callable, Dict, Iterable, List
 
 from flask import Flask, Response, jsonify, request, stream_with_context
@@ -248,13 +247,18 @@ def _determine_allowed_agents(
     return allowed_agents, allowed_name_set, visible_limit
 
 
+def _clone_transitions(groupchat: GroupChat) -> Dict[object, List[object]]:
+    transitions = getattr(groupchat, "allowed_speaker_transitions_dict", {})
+    return {agent: list(partners) for agent, partners in transitions.items()}
+
+
 def _configure_groupchat(
     manager: GroupChatManager, user: UserProxyAgent, allowed_agents: List[AssistantAgent]
 ) -> Callable[[], None]:
     groupchat = manager.groupchat
     original_agents = list(groupchat.agents)
     original_max_round = groupchat.max_round
-    original_transitions = deepcopy(groupchat.allowed_speaker_transitions_dict)
+    original_transitions = _clone_transitions(groupchat)
     participants = [user, *allowed_agents]
     groupchat.agents = participants
     groupchat.max_round = max(1, len(allowed_agents))

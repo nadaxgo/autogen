@@ -307,15 +307,13 @@
         transition: transform 0.2s ease;
       }
       .preview[data-has-image="1"] {
-        background-size: cover;
-        background-position: center;
         color: transparent;
       }
-      .preview[data-has-image="1"]::after {
-        content: "";
-        position: absolute;
-        inset: 0;
-        background: rgba(255, 255, 255, 0.05);
+      .preview img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        border-radius: inherit;
       }
       .preview:hover {
         transform: translateY(-2px);
@@ -489,14 +487,17 @@ function setPreview(name, src, { isObjectUrl = false } = {}) {
   }
   if (src) {
     preview.dataset.hasImage = '1';
-    preview.style.backgroundImage = `url(${src})`;
-    preview.textContent = '';
+    preview.innerHTML = '';
+    const img = document.createElement('img');
+    img.src = src;
+    img.alt = `${name}头像预览`;
+    preview.appendChild(img);
     if (isObjectUrl) {
       preview.dataset.objectUrl = src;
     }
   } else {
     preview.dataset.hasImage = '0';
-    preview.style.backgroundImage = '';
+    preview.innerHTML = '';
     preview.textContent = defaultAvatars[name] || '👤';
   }
 }
@@ -769,7 +770,6 @@ if (document.readyState === 'loading') {
 } else {
   loadAvatars();
 }
-</script>
 </script>
 
 </body>
