@@ -74,48 +74,79 @@
       #lobby {
         gap: 20px;
       }
+      #lobby p {
+        margin: 0;
+        color: var(--text-secondary);
+        font-size: 0.9rem;
+      }
+      .lobby-tip {
+        margin-bottom: 6px;
+      }
       #lobby h2 {
         margin: 0;
         font-size: 1.4rem;
       }
       #bots {
         display: grid;
-        gap: 12px 18px;
-        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 16px;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
       }
-      #bots div {
+      .bot-card {
         display: flex;
-        align-items: center;
-        justify-content: space-between;
-        padding: 12px 16px;
+        flex-direction: column;
+        gap: 12px;
+        padding: 16px;
         border: 1px solid var(--border);
-        border-radius: 18px;
+        border-radius: 20px;
         background: var(--bot-bg);
         transition: border-color 0.2s ease, box-shadow 0.2s ease;
       }
-      #bots div:hover {
+      .bot-card:hover {
         border-color: var(--accent);
-        box-shadow: 0 12px 25px rgba(85, 99, 255, 0.12);
+        box-shadow: 0 12px 25px rgba(85, 99, 255, 0.15);
       }
-      .bot-config {
+      .bot-top {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+      }
+      .bot-select {
         display: flex;
         align-items: center;
         gap: 8px;
+        font-weight: 600;
+        color: var(--text-primary);
       }
-      label {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        font-weight: 500;
+      .bot-select input[type="checkbox"] {
+        margin: 0;
       }
       input[type="checkbox"] {
         width: 18px;
         height: 18px;
         accent-color: var(--accent);
       }
-      input[type="file"] {
+      .file-field {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+      .file-label {
         font-size: 0.85rem;
         color: var(--text-secondary);
+        white-space: nowrap;
+      }
+      .file-field input[type="file"] {
+        flex: 1;
+        font-size: 0.9rem;
+        color: var(--text-secondary);
+        background: #fff;
+        padding: 8px 12px;
+        border: 1px dashed rgba(85, 99, 255, 0.3);
+        border-radius: 14px;
+      }
+      .file-field input[type="file"]:hover {
+        border-color: var(--accent);
       }
       #chat {
         min-height: 560px;
@@ -261,20 +292,48 @@
         transform: translateY(0);
       }
       .preview {
-        width: 36px;
-        height: 36px;
+        width: 44px;
+        height: 44px;
         border-radius: 50%;
-        object-fit: cover;
-        margin-left: 6px;
-        border: 1px solid rgba(85, 99, 255, 0.18);
-        background: rgba(85, 99, 255, 0.08);
-      }
-      .lobby-row {
         display: flex;
         align-items: center;
-        gap: 12px;
+        justify-content: center;
+        font-size: 22px;
+        background: var(--accent-soft);
+        color: var(--accent);
+        border: 1px solid rgba(85, 99, 255, 0.2);
+        overflow: hidden;
+        position: relative;
+        transition: transform 0.2s ease;
       }
-      .lobby-row label {
+      .preview[data-has-image="1"] {
+        background-size: cover;
+        background-position: center;
+        color: transparent;
+      }
+      .preview[data-has-image="1"]::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background: rgba(255, 255, 255, 0.05);
+      }
+      .preview:hover {
+        transform: translateY(-2px);
+      }
+      .lobby-row {
+        display: grid;
+        grid-template-columns: auto 1fr auto;
+        align-items: center;
+        gap: 12px;
+        padding: 14px 18px;
+        border-radius: 20px;
+        border: 1px solid var(--border);
+        background: var(--bot-bg);
+      }
+      .lobby-row input[type="file"] {
+        width: 100%;
+      }
+      .lobby-label {
         font-weight: 600;
         color: var(--text-primary);
       }
@@ -310,45 +369,61 @@
     </header>
     <section id="lobby" class="view">
       <h2>选择情绪角色</h2>
+      <p class="lobby-tip">可上传自定义头像，也可使用默认表情。</p>
       <div class="lobby-row">
-        <label for="user-avatar">我的头像</label>
+        <span class="lobby-label">我的头像</span>
         <input type="file" id="user-avatar" accept="image/*">
-        <img data-preview="我" class="preview" alt="我的头像预览">
+        <div data-preview="我" class="preview" aria-label="我的头像预览" role="img"></div>
       </div>
       <div id="bots">
-        <div>
-          <label><input type="checkbox" value="乐乐" checked> <span>乐乐</span></label>
-          <div class="bot-config">
+        <div class="bot-card" data-name="乐乐">
+          <div class="bot-top">
+            <label class="bot-select"><input type="checkbox" value="乐乐" checked> <span>乐乐</span></label>
+            <div class="preview" data-preview="乐乐" aria-hidden="true"></div>
+          </div>
+          <div class="file-field">
+            <span class="file-label">自定义头像</span>
             <input type="file" accept="image/*" data-avatar="乐乐">
-            <img data-preview="乐乐" class="preview" alt="乐乐头像预览">
           </div>
         </div>
-        <div>
-          <label><input type="checkbox" value="忧忧" checked> <span>忧忧</span></label>
-          <div class="bot-config">
+        <div class="bot-card" data-name="忧忧">
+          <div class="bot-top">
+            <label class="bot-select"><input type="checkbox" value="忧忧" checked> <span>忧忧</span></label>
+            <div class="preview" data-preview="忧忧" aria-hidden="true"></div>
+          </div>
+          <div class="file-field">
+            <span class="file-label">自定义头像</span>
             <input type="file" accept="image/*" data-avatar="忧忧">
-            <img data-preview="忧忧" class="preview" alt="忧忧头像预览">
           </div>
         </div>
-        <div>
-          <label><input type="checkbox" value="怒怒" checked> <span>怒怒</span></label>
-          <div class="bot-config">
+        <div class="bot-card" data-name="怒怒">
+          <div class="bot-top">
+            <label class="bot-select"><input type="checkbox" value="怒怒" checked> <span>怒怒</span></label>
+            <div class="preview" data-preview="怒怒" aria-hidden="true"></div>
+          </div>
+          <div class="file-field">
+            <span class="file-label">自定义头像</span>
             <input type="file" accept="image/*" data-avatar="怒怒">
-            <img data-preview="怒怒" class="preview" alt="怒怒头像预览">
           </div>
         </div>
-        <div>
-          <label><input type="checkbox" value="恐恐" checked> <span>恐恐</span></label>
-          <div class="bot-config">
+        <div class="bot-card" data-name="恐恐">
+          <div class="bot-top">
+            <label class="bot-select"><input type="checkbox" value="恐恐" checked> <span>恐恐</span></label>
+            <div class="preview" data-preview="恐恐" aria-hidden="true"></div>
+          </div>
+          <div class="file-field">
+            <span class="file-label">自定义头像</span>
             <input type="file" accept="image/*" data-avatar="恐恐">
-            <img data-preview="恐恐" class="preview" alt="恐恐头像预览">
           </div>
         </div>
-        <div>
-          <label><input type="checkbox" value="厌厌" checked> <span>厌厌</span></label>
-          <div class="bot-config">
+        <div class="bot-card" data-name="厌厌">
+          <div class="bot-top">
+            <label class="bot-select"><input type="checkbox" value="厌厌" checked> <span>厌厌</span></label>
+            <div class="preview" data-preview="厌厌" aria-hidden="true"></div>
+          </div>
+          <div class="file-field">
+            <span class="file-label">自定义头像</span>
             <input type="file" accept="image/*" data-avatar="厌厌">
-            <img data-preview="厌厌" class="preview" alt="厌厌头像预览">
           </div>
         </div>
       </div>
@@ -375,61 +450,60 @@ const defaultAvatars = {
   '厌厌': '🙄',
   '系统': '🤖'
 };
-const avatarCache = new Map();
 
-function buildAvatarTemplate(name) {
-  const template = document.createElement('div');
-  template.className = 'avatar';
-  template.dataset.loaded = '0';
-  const src = avatars[name];
-
+function setPreview(name, src, { isObjectUrl = false } = {}) {
+  const preview = document.querySelector(`[data-preview="${name}"]`);
+  if (!preview) {
+    return;
+  }
+  if (preview.dataset.objectUrl && preview.dataset.objectUrl !== src) {
+    URL.revokeObjectURL(preview.dataset.objectUrl);
+    delete preview.dataset.objectUrl;
+  }
   if (src) {
+    preview.dataset.hasImage = '1';
+    preview.style.backgroundImage = `url(${src})`;
+    preview.textContent = '';
+    if (isObjectUrl) {
+      preview.dataset.objectUrl = src;
+    }
+  } else {
+    preview.dataset.hasImage = '0';
+    preview.style.backgroundImage = '';
+    preview.textContent = defaultAvatars[name] || '👤';
+  }
+}
+
+function registerAvatar(name, src) {
+  avatars[name] = src;
+  setPreview(name, src);
+}
+
+function createAvatarNode(name) {
+  const node = document.createElement('div');
+  node.className = 'avatar';
+  const src = avatars[name];
+  if (src) {
+    node.dataset.loaded = '0';
     const img = document.createElement('img');
     img.src = src;
     img.alt = `${name}头像`;
     img.decoding = 'async';
     img.loading = 'lazy';
-    if (img.complete) {
-      template.dataset.loaded = '1';
+    img.addEventListener('load', () => {
+      node.dataset.loaded = '1';
       img.classList.add('is-loaded');
-    } else {
-      img.addEventListener('load', () => {
-        template.dataset.loaded = '1';
-        img.classList.add('is-loaded');
-      });
-      img.addEventListener('error', () => {
-        template.dataset.loaded = '1';
-        template.textContent = defaultAvatars[name] || '👤';
-      }, { once: true });
-    }
-    template.appendChild(img);
+    });
+    img.addEventListener('error', () => {
+      node.dataset.loaded = '1';
+      node.textContent = defaultAvatars[name] || '👤';
+    }, { once: true });
+    node.appendChild(img);
   } else {
-    template.dataset.loaded = '1';
-    template.textContent = defaultAvatars[name] || '👤';
+    node.dataset.loaded = '1';
+    node.textContent = defaultAvatars[name] || '👤';
   }
-
-  avatarCache.set(name, template);
-  return template;
-}
-
-function registerAvatar(name, src) {
-  avatars[name] = src;
-  buildAvatarTemplate(name);
-}
-
-function getAvatarNode(name) {
-  if (!avatarCache.has(name)) {
-    buildAvatarTemplate(name);
-  }
-  return avatarCache.get(name).cloneNode(true);
-}
-
-function ensureDefaultAvatars() {
-  Object.keys(defaultAvatars).forEach(name => {
-    if (!avatarCache.has(name)) {
-      buildAvatarTemplate(name);
-    }
-  });
+  return node;
 }
 
 async function loadAvatars() {
@@ -439,43 +513,48 @@ async function loadAvatars() {
       return;
     }
     const data = await resp.json();
-    for (const [name, url] of Object.entries(data)) {
+    Object.entries(data).forEach(([name, url]) => {
       registerAvatar(name, url);
-      const preview = document.querySelector(`img[data-preview="${name}"]`);
-      if (preview) {
-        preview.src = url;
-      }
-    }
+    });
   } catch (error) {
     console.error('加载头像失败', error);
   }
 }
 
 async function joinChat() {
-  const selected = [];
-  const uploads = [];
   const joinButton = document.getElementById('join');
+  if (!joinButton || joinButton.disabled) {
+    return;
+  }
+  const originalLabel = joinButton.dataset.originalText || joinButton.textContent;
+  joinButton.dataset.originalText = originalLabel;
   joinButton.disabled = true;
   joinButton.textContent = '进入中…';
 
-  document.querySelectorAll('#bots div').forEach(div => {
-    const box = div.querySelector('input[type=checkbox]');
-    if (box.checked) {
-      selected.push(box.value);
+  const selected = [];
+  const uploads = [];
+
+  document.querySelectorAll('#bots .bot-card').forEach(card => {
+    const checkbox = card.querySelector('input[type="checkbox"]');
+    const fileInput = card.querySelector('input[type="file"]');
+    const name = card.dataset.name || (checkbox && checkbox.value) || '';
+    if (checkbox && checkbox.checked) {
+      selected.push(checkbox.value);
     }
-    const fileInput = div.querySelector('input[type=file]');
-    if (fileInput.files[0]) {
-      uploads.push(uploadAvatar(box.value, fileInput.files[0]));
+    if (fileInput && fileInput.files[0] && name) {
+      uploads.push(uploadAvatar(name, fileInput.files[0]));
     }
   });
 
-  const userFile = document.getElementById('user-avatar');
-  if (userFile.files[0]) {
-    uploads.push(uploadAvatar('我', userFile.files[0]));
+  const userFileInput = document.getElementById('user-avatar');
+  if (userFileInput && userFileInput.files[0]) {
+    uploads.push(uploadAvatar('我', userFileInput.files[0]));
   }
 
   try {
-    await Promise.all(uploads);
+    if (uploads.length) {
+      await Promise.all(uploads);
+    }
     const resp = await fetch('/chat/start', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -486,6 +565,8 @@ async function joinChat() {
     }
     const data = await resp.json();
     sessionId = data.session_id;
+    joinButton.textContent = originalLabel;
+    joinButton.disabled = false;
     document.getElementById('lobby').style.display = 'none';
     const chat = document.getElementById('chat');
     chat.style.display = 'flex';
@@ -494,7 +575,6 @@ async function joinChat() {
     console.error('进入聊天室失败', error);
     joinButton.disabled = false;
     joinButton.textContent = '重试进入';
-    return;
   }
 }
 
@@ -518,7 +598,6 @@ async function sendMessage() {
     if (!resp.ok || !resp.body) {
       throw new Error('无法获取回复');
     }
-
     const reader = resp.body.getReader();
     const decoder = new TextDecoder('utf-8');
     let buf = '';
@@ -529,9 +608,7 @@ async function sendMessage() {
         break;
       }
       buf += decoder.decode(value, { stream: true });
-      const parts = buf.split('
-
-');
+      const parts = buf.split('\n\n');
       buf = parts.pop();
       for (const part of parts) {
         if (part.startsWith('data:')) {
@@ -554,7 +631,7 @@ function appendMessage(name, content) {
   const isUser = name === '我';
   container.className = `message ${isUser ? 'user' : 'bot'}`;
 
-  const avatar = getAvatarNode(name);
+  const avatar = createAvatarNode(name);
   const bubble = document.createElement('div');
   bubble.className = 'bubble';
 
@@ -597,12 +674,11 @@ async function uploadAvatar(name, file) {
     }
     const data = await resp.json();
     registerAvatar(name, data.url);
-    const preview = document.querySelector(`img[data-preview="${name}"]`);
-    if (preview) {
-      preview.src = data.url;
-    }
+    return data;
   } catch (error) {
     console.error(`上传头像 ${name} 失败`, error);
+    setPreview(name, avatars[name]);
+    throw error;
   }
 }
 
@@ -616,29 +692,34 @@ document.getElementById('input').addEventListener('keydown', event => {
 
 document.getElementById('user-avatar').addEventListener('change', event => {
   const file = event.target.files[0];
-  const preview = document.querySelector('img[data-preview="我"]');
-  if (file && preview) {
-    preview.src = URL.createObjectURL(file);
+  if (!file) {
+    setPreview('我', avatars['我']);
+    return;
   }
+  const previewUrl = URL.createObjectURL(file);
+  setPreview('我', previewUrl, { isObjectUrl: true });
 });
 
-document.querySelectorAll('input[type=file][data-avatar]').forEach(inputNode => {
+document.querySelectorAll('input[type="file"][data-avatar]').forEach(inputNode => {
   inputNode.addEventListener('change', event => {
     const file = event.target.files[0];
     const name = event.target.getAttribute('data-avatar');
-    const preview = document.querySelector(`img[data-preview="${name}"]`);
-    if (file && preview) {
-      preview.src = URL.createObjectURL(file);
+    if (!file) {
+      setPreview(name, avatars[name]);
+      return;
     }
+    const previewUrl = URL.createObjectURL(file);
+    setPreview(name, previewUrl, { isObjectUrl: true });
   });
 });
 
-ensureDefaultAvatars();
+Object.keys(defaultAvatars).forEach(name => setPreview(name));
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', loadAvatars, { once: true });
 } else {
   loadAvatars();
 }
+</script>
 </script>
 
 </body>
