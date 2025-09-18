@@ -4,167 +4,642 @@
   <meta charset="UTF-8" />
   <title>头脑特工队聊天室</title>
     <style>
-      body { font-family: sans-serif; margin:0; padding:0; height:100vh; display:flex; flex-direction:column; background:#f5f5f5; }
-      #lobby, #chat { margin:auto; width:90%; max-width:600px; flex:1; display:flex; flex-direction:column; }
-      #messages { flex:1; overflow-y:auto; padding:10px; }
-      .message { display:flex; align-items:flex-end; margin:8px 0; }
-      .message.user { flex-direction:row-reverse; }
-      .bubble { padding:8px 12px; border-radius:8px; max-width:75%; word-break:break-word; }
-      .user .bubble { background:#DCF8C6; }
-      .bot .bubble { background:#fff; border:1px solid #ccc; }
-      .name { font-size:0.75em; color:#666; margin-bottom:2px; }
-      .avatar { width:32px; height:32px; border-radius:50%; overflow:hidden; display:flex; align-items:center; justify-content:center; background:#ddd; font-size:20px; }
-      .avatar img { width:100%; height:100%; object-fit:cover; }
-      .preview { width:32px; height:32px; border-radius:50%; object-fit:cover; vertical-align:middle; margin-left:4px; }
-      #input { flex:1; padding:8px; }
-      #send { padding:8px 12px; }
+      :root {
+        color-scheme: light;
+        --bg-start: #f8f9ff;
+        --bg-end: #e7ecff;
+        --card-bg: #ffffff;
+        --card-shadow: 0 24px 45px rgba(40, 64, 120, 0.08);
+        --accent: #5563ff;
+        --accent-soft: rgba(85, 99, 255, 0.1);
+        --bot-bg: #f7f8ff;
+        --user-bg: linear-gradient(135deg, #7f8cff, #5563ff);
+        --border: rgba(85, 99, 255, 0.15);
+        --text-primary: #1f2346;
+        --text-secondary: #6b7390;
+      }
+      ::selection {
+        background: rgba(85, 99, 255, 0.2);
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        padding: 32px 16px;
+        min-height: 100vh;
+        display: flex;
+        justify-content: center;
+        background: linear-gradient(160deg, var(--bg-start), var(--bg-end));
+        font-family: "SF Pro Rounded", "PingFang SC", "Segoe UI", sans-serif;
+        color: var(--text-primary);
+      }
+      .app-shell {
+        width: min(960px, 100%);
+        display: flex;
+        flex-direction: column;
+        gap: 18px;
+      }
+      .app-header {
+        background: rgba(255, 255, 255, 0.72);
+        backdrop-filter: blur(16px);
+        border-radius: 24px;
+        padding: 20px 28px;
+        box-shadow: 0 12px 35px rgba(40, 64, 120, 0.08);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 12px;
+      }
+      .app-header h1 {
+        margin: 0;
+        font-size: 1.5rem;
+        font-weight: 600;
+        letter-spacing: 0.02em;
+      }
+      .app-header p {
+        margin: 0;
+        color: var(--text-secondary);
+        font-size: 0.95rem;
+      }
+      .view {
+        background: var(--card-bg);
+        border-radius: 28px;
+        box-shadow: var(--card-shadow);
+        padding: 28px;
+        display: flex;
+        flex-direction: column;
+        min-height: 0;
+      }
+      #lobby {
+        gap: 20px;
+      }
+      #lobby h2 {
+        margin: 0;
+        font-size: 1.4rem;
+      }
+      #bots {
+        display: grid;
+        gap: 12px 18px;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      }
+      #bots div {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 12px 16px;
+        border: 1px solid var(--border);
+        border-radius: 18px;
+        background: var(--bot-bg);
+        transition: border-color 0.2s ease, box-shadow 0.2s ease;
+      }
+      #bots div:hover {
+        border-color: var(--accent);
+        box-shadow: 0 12px 25px rgba(85, 99, 255, 0.12);
+      }
+      .bot-config {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      label {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-weight: 500;
+      }
+      input[type="checkbox"] {
+        width: 18px;
+        height: 18px;
+        accent-color: var(--accent);
+      }
+      input[type="file"] {
+        font-size: 0.85rem;
+        color: var(--text-secondary);
+      }
+      #chat {
+        min-height: 560px;
+      }
+      #messages {
+        flex: 1;
+        overflow-y: auto;
+        padding: 12px 0 4px;
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+        scroll-behavior: smooth;
+      }
+      #messages::-webkit-scrollbar {
+        width: 6px;
+      }
+      #messages::-webkit-scrollbar-thumb {
+        background: rgba(31, 35, 70, 0.18);
+        border-radius: 999px;
+      }
+      .message {
+        display: flex;
+        align-items: flex-start;
+        gap: 14px;
+        animation: fade-in 0.25s ease;
+      }
+      .message.user {
+        flex-direction: row-reverse;
+        align-self: flex-end;
+      }
+      .avatar {
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        overflow: hidden;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 22px;
+        background: var(--accent-soft);
+        color: var(--accent);
+        position: relative;
+      }
+      .avatar::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        border-radius: inherit;
+        background: rgba(255, 255, 255, 0.64);
+        transition: opacity 0.25s ease;
+        opacity: 1;
+      }
+      .avatar[data-loaded="1"]::after {
+        opacity: 0;
+      }
+      .avatar img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        border-radius: inherit;
+        filter: saturate(1.05);
+        opacity: 0;
+        transition: opacity 0.3s ease;
+      }
+      .avatar img.is-loaded {
+        opacity: 1;
+      }
+      .bubble {
+        position: relative;
+        padding: 12px 16px 14px;
+        border-radius: 20px;
+        max-width: clamp(220px, 65vw, 480px);
+        background: var(--bot-bg);
+        box-shadow: inset 0 0 0 1px rgba(85, 99, 255, 0.1);
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+      .message.user .bubble {
+        background: var(--user-bg);
+        color: #fff;
+        box-shadow: none;
+      }
+      .bubble-header {
+        font-size: 0.75rem;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        color: var(--accent);
+        opacity: 0.7;
+      }
+      .message.user .bubble-header {
+        color: rgba(255, 255, 255, 0.75);
+      }
+      .bubble-body {
+        line-height: 1.5;
+        white-space: pre-wrap;
+        word-break: break-word;
+        font-size: 0.95rem;
+      }
+      #input-area {
+        display: flex;
+        gap: 8px;
+        margin-top: 18px;
+        background: rgba(247, 248, 255, 0.92);
+        border-radius: 18px;
+        padding: 10px;
+        box-shadow: inset 0 0 0 1px rgba(85, 99, 255, 0.08);
+      }
+      #input {
+        flex: 1;
+        padding: 12px 14px;
+        border: none;
+        border-radius: 14px;
+        font-size: 1rem;
+        outline: none;
+        background: rgba(255, 255, 255, 0.9);
+      }
+      #input::placeholder {
+        color: var(--text-secondary);
+      }
+      button {
+        border: none;
+        border-radius: 16px;
+        font-size: 0.95rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
+      }
+      #join,
+      #send {
+        padding: 12px 20px;
+        background: var(--accent);
+        color: #fff;
+        box-shadow: 0 12px 30px rgba(85, 99, 255, 0.3);
+      }
+      #join:hover,
+      #send:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 15px 38px rgba(85, 99, 255, 0.35);
+      }
+      #join:active,
+      #send:active {
+        transform: translateY(0);
+      }
+      .preview {
+        width: 36px;
+        height: 36px;
+        border-radius: 50%;
+        object-fit: cover;
+        margin-left: 6px;
+        border: 1px solid rgba(85, 99, 255, 0.18);
+        background: rgba(85, 99, 255, 0.08);
+      }
+      .lobby-row {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+      .lobby-row label {
+        font-weight: 600;
+        color: var(--text-primary);
+      }
+      @keyframes fade-in {
+        from { opacity: 0; transform: translateY(8px); }
+        to { opacity: 1; transform: translateY(0); }
+      }
+      @media (max-width: 768px) {
+        body {
+          padding: 20px 12px;
+        }
+        .app-header,
+        .view {
+          border-radius: 20px;
+          padding: 20px;
+        }
+        #messages {
+          max-height: 55vh;
+        }
+        .bubble {
+          max-width: 100%;
+        }
+      }
     </style>
 </head>
 <body>
-  <div id="lobby">
-    <h2>选择情绪角色</h2>
-    <label>我的头像 <input type="file" id="user-avatar" accept="image/*"><img data-preview="我" class="preview"></label>
-    <div id="bots">
-      <div><label><input type="checkbox" value="乐乐" checked> 乐乐</label> <input type="file" accept="image/*" data-avatar="乐乐"><img data-preview="乐乐" class="preview"></div>
-      <div><label><input type="checkbox" value="忧忧" checked> 忧忧</label> <input type="file" accept="image/*" data-avatar="忧忧"><img data-preview="忧忧" class="preview"></div>
-      <div><label><input type="checkbox" value="怒怒" checked> 怒怒</label> <input type="file" accept="image/*" data-avatar="怒怒"><img data-preview="怒怒" class="preview"></div>
-      <div><label><input type="checkbox" value="恐恐" checked> 恐恐</label> <input type="file" accept="image/*" data-avatar="恐恐"><img data-preview="恐恐" class="preview"></div>
-      <div><label><input type="checkbox" value="厌厌" checked> 厌厌</label> <input type="file" accept="image/*" data-avatar="厌厌"><img data-preview="厌厌" class="preview"></div>
-    </div>
-    <button id="join">进入聊天室</button>
-  </div>
-  <div id="chat" style="display:none; flex:1;">
-    <div id="messages"></div>
-    <div id="input-area" style="display:flex; gap:4px; margin:10px 0;">
-      <input id="input" placeholder="说点什么..." />
-      <button id="send">发送</button>
-    </div>
+  <div class="app-shell">
+    <header class="app-header">
+      <div>
+        <h1>头脑特工队聊天室</h1>
+        <p>邀请情绪小队并肩作战，让灵感、洞察与守护同频共振。</p>
+      </div>
+    </header>
+    <section id="lobby" class="view">
+      <h2>选择情绪角色</h2>
+      <div class="lobby-row">
+        <label for="user-avatar">我的头像</label>
+        <input type="file" id="user-avatar" accept="image/*">
+        <img data-preview="我" class="preview" alt="我的头像预览">
+      </div>
+      <div id="bots">
+        <div>
+          <label><input type="checkbox" value="乐乐" checked> <span>乐乐</span></label>
+          <div class="bot-config">
+            <input type="file" accept="image/*" data-avatar="乐乐">
+            <img data-preview="乐乐" class="preview" alt="乐乐头像预览">
+          </div>
+        </div>
+        <div>
+          <label><input type="checkbox" value="忧忧" checked> <span>忧忧</span></label>
+          <div class="bot-config">
+            <input type="file" accept="image/*" data-avatar="忧忧">
+            <img data-preview="忧忧" class="preview" alt="忧忧头像预览">
+          </div>
+        </div>
+        <div>
+          <label><input type="checkbox" value="怒怒" checked> <span>怒怒</span></label>
+          <div class="bot-config">
+            <input type="file" accept="image/*" data-avatar="怒怒">
+            <img data-preview="怒怒" class="preview" alt="怒怒头像预览">
+          </div>
+        </div>
+        <div>
+          <label><input type="checkbox" value="恐恐" checked> <span>恐恐</span></label>
+          <div class="bot-config">
+            <input type="file" accept="image/*" data-avatar="恐恐">
+            <img data-preview="恐恐" class="preview" alt="恐恐头像预览">
+          </div>
+        </div>
+        <div>
+          <label><input type="checkbox" value="厌厌" checked> <span>厌厌</span></label>
+          <div class="bot-config">
+            <input type="file" accept="image/*" data-avatar="厌厌">
+            <img data-preview="厌厌" class="preview" alt="厌厌头像预览">
+          </div>
+        </div>
+      </div>
+      <button id="join">进入聊天室</button>
+    </section>
+    <section id="chat" class="view" style="display:none;">
+      <div id="messages"></div>
+      <div id="input-area">
+        <input id="input" placeholder="说点什么..." />
+        <button id="send">发送</button>
+      </div>
+    </section>
   </div>
 
 <script>
 let sessionId = null;
 const avatars = {};
-const defaultAvatars = { '我':'🙂','乐乐':'😊','忧忧':'😢','怒怒':'😡','恐恐':'😨','厌厌':'🙄' };
-async function loadAvatars(){
-  const resp = await fetch('/avatars');
-  if(!resp.ok) return;
-  const data = await resp.json();
-  Object.assign(avatars, data);
-  for(const [name,url] of Object.entries(data)){
-    const img=document.querySelector(`img[data-preview="${name}"]`);
-    if(img){ img.src=url; }
+const defaultAvatars = {
+  '我': '🙂',
+  '乐乐': '😊',
+  '忧忧': '😢',
+  '怒怒': '😡',
+  '恐恐': '😨',
+  '厌厌': '🙄',
+  '系统': '🤖'
+};
+const avatarCache = new Map();
+
+function buildAvatarTemplate(name) {
+  const template = document.createElement('div');
+  template.className = 'avatar';
+  template.dataset.loaded = '0';
+  const src = avatars[name];
+
+  if (src) {
+    const img = document.createElement('img');
+    img.src = src;
+    img.alt = `${name}头像`;
+    img.decoding = 'async';
+    img.loading = 'lazy';
+    if (img.complete) {
+      template.dataset.loaded = '1';
+      img.classList.add('is-loaded');
+    } else {
+      img.addEventListener('load', () => {
+        template.dataset.loaded = '1';
+        img.classList.add('is-loaded');
+      });
+      img.addEventListener('error', () => {
+        template.dataset.loaded = '1';
+        template.textContent = defaultAvatars[name] || '👤';
+      }, { once: true });
+    }
+    template.appendChild(img);
+  } else {
+    template.dataset.loaded = '1';
+    template.textContent = defaultAvatars[name] || '👤';
   }
+
+  avatarCache.set(name, template);
+  return template;
 }
-async function joinChat(){
-  const selected = [];
-  const uploads = [];
-  document.querySelectorAll('#bots div').forEach(div=>{
-    const box = div.querySelector('input[type=checkbox]');
-    if(box.checked){ selected.push(box.value); }
-    const f = div.querySelector('input[type=file]');
-    if(f.files[0]){ uploads.push(uploadAvatar(box.value, f.files[0])); }
-  });
-  const userFile = document.getElementById('user-avatar');
-  if(userFile.files[0]){ uploads.push(uploadAvatar('我', userFile.files[0])); }
-  await Promise.all(uploads);
-  const resp = await fetch('/chat/start', {
-    method:'POST',
-    headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({bots: selected})
-  });
-  const data = await resp.json();
-  sessionId = data.session_id;
-  document.getElementById('lobby').style.display='none';
-  document.getElementById('chat').style.display='block';
-  document.getElementById('input').focus();
+
+function registerAvatar(name, src) {
+  avatars[name] = src;
+  buildAvatarTemplate(name);
 }
-async function sendMessage(){
-  const input = document.getElementById('input');
-  const text = input.value.trim();
-  if(!text) return;
-  appendMessage('我', text);
-  input.value='';
-  const area=document.getElementById('input-area');
-  area.style.display='none';
-  const resp = await fetch('/chat/send_stream', {
-    method:'POST',
-    headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({session_id: sessionId, message: text})
+
+function getAvatarNode(name) {
+  if (!avatarCache.has(name)) {
+    buildAvatarTemplate(name);
+  }
+  return avatarCache.get(name).cloneNode(true);
+}
+
+function ensureDefaultAvatars() {
+  Object.keys(defaultAvatars).forEach(name => {
+    if (!avatarCache.has(name)) {
+      buildAvatarTemplate(name);
+    }
   });
-  const reader = resp.body.getReader();
-  const decoder = new TextDecoder('utf-8');
-  let buf='';
-  while(true){
-    const {value, done} = await reader.read();
-    if(done) break;
-    buf += decoder.decode(value, {stream:true});
-    const parts = buf.split('\n\n');
-    buf = parts.pop();
-    for(const part of parts){
-      if(part.startsWith('data:')){
-        const data = JSON.parse(part.slice(5));
-        appendMessage(data.name, data.content);
+}
+
+async function loadAvatars() {
+  try {
+    const resp = await fetch('/avatars');
+    if (!resp.ok) {
+      return;
+    }
+    const data = await resp.json();
+    for (const [name, url] of Object.entries(data)) {
+      registerAvatar(name, url);
+      const preview = document.querySelector(`img[data-preview="${name}"]`);
+      if (preview) {
+        preview.src = url;
       }
     }
+  } catch (error) {
+    console.error('加载头像失败', error);
   }
-  area.style.display='flex';
-}
-function appendMessage(name, content){
-  const container=document.createElement('div');
-  const messages=document.getElementById('messages');
-  const isUser=name==='我';
-  container.className='message '+(isUser?'user':'bot');
-  const avatar=document.createElement('div');
-  avatar.className='avatar';
-  if(avatars[name]){
-    const img=document.createElement('img');
-    img.src=avatars[name];
-    avatar.appendChild(img);
-  }else{
-    avatar.textContent=defaultAvatars[name]||'👤';
-  }
-  const bubble=document.createElement('div');
-  bubble.className='bubble';
-  bubble.textContent=content;
-  if(isUser){
-    container.appendChild(bubble);
-    container.appendChild(avatar);
-  }else{
-    container.appendChild(avatar);
-    const nameLabel=document.createElement('div');
-    nameLabel.className='name';
-    nameLabel.textContent=name;
-    bubble.prepend(nameLabel);
-    container.appendChild(bubble);
-  }
-  messages.appendChild(container);
-  messages.scrollTop = messages.scrollHeight;
 }
 
-document.getElementById('join').onclick = joinChat;
-document.getElementById('send').onclick = sendMessage;
-document.getElementById('input').addEventListener('keydown', e=>{if(e.key==='Enter'){sendMessage();}});
-document.addEventListener('DOMContentLoaded', loadAvatars);
-document.getElementById('user-avatar').addEventListener('change', e=>{
-  const file=e.target.files[0];
-  const img=document.querySelector('img[data-preview="我"]');
-  if(file && img){ img.src=URL.createObjectURL(file); }
+async function joinChat() {
+  const selected = [];
+  const uploads = [];
+  const joinButton = document.getElementById('join');
+  joinButton.disabled = true;
+  joinButton.textContent = '进入中…';
+
+  document.querySelectorAll('#bots div').forEach(div => {
+    const box = div.querySelector('input[type=checkbox]');
+    if (box.checked) {
+      selected.push(box.value);
+    }
+    const fileInput = div.querySelector('input[type=file]');
+    if (fileInput.files[0]) {
+      uploads.push(uploadAvatar(box.value, fileInput.files[0]));
+    }
+  });
+
+  const userFile = document.getElementById('user-avatar');
+  if (userFile.files[0]) {
+    uploads.push(uploadAvatar('我', userFile.files[0]));
+  }
+
+  try {
+    await Promise.all(uploads);
+    const resp = await fetch('/chat/start', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ bots: selected })
+    });
+    if (!resp.ok) {
+      throw new Error('无法创建会话');
+    }
+    const data = await resp.json();
+    sessionId = data.session_id;
+    document.getElementById('lobby').style.display = 'none';
+    const chat = document.getElementById('chat');
+    chat.style.display = 'flex';
+    document.getElementById('input').focus();
+  } catch (error) {
+    console.error('进入聊天室失败', error);
+    joinButton.disabled = false;
+    joinButton.textContent = '重试进入';
+    return;
+  }
+}
+
+async function sendMessage() {
+  const input = document.getElementById('input');
+  const text = input.value.trim();
+  if (!text) {
+    return;
+  }
+  appendMessage('我', text);
+  input.value = '';
+  const area = document.getElementById('input-area');
+  area.style.display = 'none';
+
+  try {
+    const resp = await fetch('/chat/send_stream', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ session_id: sessionId, message: text })
+    });
+    if (!resp.ok || !resp.body) {
+      throw new Error('无法获取回复');
+    }
+
+    const reader = resp.body.getReader();
+    const decoder = new TextDecoder('utf-8');
+    let buf = '';
+
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) {
+        break;
+      }
+      buf += decoder.decode(value, { stream: true });
+      const parts = buf.split('
+
+');
+      buf = parts.pop();
+      for (const part of parts) {
+        if (part.startsWith('data:')) {
+          const data = JSON.parse(part.slice(5));
+          appendMessage(data.name, data.content);
+        }
+      }
+    }
+  } catch (error) {
+    console.error('发送消息失败', error);
+    appendMessage('系统', '发送失败，请稍候重试。');
+  } finally {
+    area.style.display = 'flex';
+  }
+}
+
+function appendMessage(name, content) {
+  const messages = document.getElementById('messages');
+  const container = document.createElement('div');
+  const isUser = name === '我';
+  container.className = `message ${isUser ? 'user' : 'bot'}`;
+
+  const avatar = getAvatarNode(name);
+  const bubble = document.createElement('div');
+  bubble.className = 'bubble';
+
+  const header = document.createElement('div');
+  header.className = 'bubble-header';
+  header.textContent = name;
+  bubble.appendChild(header);
+
+  const body = document.createElement('div');
+  body.className = 'bubble-body';
+  body.textContent = content;
+  bubble.appendChild(body);
+
+  if (isUser) {
+    container.appendChild(bubble);
+    container.appendChild(avatar);
+  } else {
+    container.appendChild(avatar);
+    container.appendChild(bubble);
+  }
+
+  messages.appendChild(container);
+  if (typeof messages.scrollTo === 'function') {
+    messages.scrollTo({ top: messages.scrollHeight, behavior: 'smooth' });
+  } else {
+    messages.scrollTop = messages.scrollHeight;
+  }
+}
+
+async function uploadAvatar(name, file) {
+  const form = new FormData();
+  form.append('file', file);
+  try {
+    const resp = await fetch(`/avatars/${encodeURIComponent(name)}`, {
+      method: 'POST',
+      body: form
+    });
+    if (!resp.ok) {
+      throw new Error('上传失败');
+    }
+    const data = await resp.json();
+    registerAvatar(name, data.url);
+    const preview = document.querySelector(`img[data-preview="${name}"]`);
+    if (preview) {
+      preview.src = data.url;
+    }
+  } catch (error) {
+    console.error(`上传头像 ${name} 失败`, error);
+  }
+}
+
+document.getElementById('join').addEventListener('click', joinChat);
+document.getElementById('send').addEventListener('click', sendMessage);
+document.getElementById('input').addEventListener('keydown', event => {
+  if (event.key === 'Enter') {
+    sendMessage();
+  }
 });
-document.querySelectorAll('input[type=file][data-avatar]').forEach(inp=>{
-  inp.addEventListener('change', e=>{
-    const file=e.target.files[0];
-    const name=e.target.getAttribute('data-avatar');
-    const img=document.querySelector(`img[data-preview="${name}"]`);
-    if(file && img){ img.src=URL.createObjectURL(file); }
+
+document.getElementById('user-avatar').addEventListener('change', event => {
+  const file = event.target.files[0];
+  const preview = document.querySelector('img[data-preview="我"]');
+  if (file && preview) {
+    preview.src = URL.createObjectURL(file);
+  }
+});
+
+document.querySelectorAll('input[type=file][data-avatar]').forEach(inputNode => {
+  inputNode.addEventListener('change', event => {
+    const file = event.target.files[0];
+    const name = event.target.getAttribute('data-avatar');
+    const preview = document.querySelector(`img[data-preview="${name}"]`);
+    if (file && preview) {
+      preview.src = URL.createObjectURL(file);
+    }
   });
 });
 
-async function uploadAvatar(name, file){
-  const fd=new FormData();
-  fd.append('file', file);
-  const resp=await fetch('/avatars/'+encodeURIComponent(name),{method:'POST', body:fd});
-  if(resp.ok){ const data=await resp.json(); avatars[name]=data.url; }
+ensureDefaultAvatars();
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', loadAvatars, { once: true });
+} else {
+  loadAvatars();
 }
 </script>
+
 </body>
 </html>
