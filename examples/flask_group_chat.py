@@ -8,7 +8,8 @@ import re
 import threading
 import time
 import uuid
-from typing import Dict, Iterable, List
+from copy import deepcopy
+from typing import Callable, Dict, Iterable, List
 
 from flask import Flask, Response, jsonify, request, stream_with_context
 
@@ -28,7 +29,7 @@ LLM_CONFIG: Dict = {
 }
 
 
-MAX_VISIBLE_REPLIES = 2
+MAX_VISIBLE_REPLIES = 5
 MAX_GROUP_ROUNDS = 50
 
 
@@ -147,41 +148,127 @@ def split_content(text: str) -> List[str]:
     return parts[:2]
 
 
-def suggest_bots(message: str, agents: Iterable[AssistantAgent]) -> List[str]:
-    """Select up to two bot names that best fit the given message."""
+def suggest_bots(text: str, agent_order: List[str], agent_map: Dict[str, AssistantAgent]) -> List[str]:
+    """Pick the most relevant bot names given the current conversational context."""
 
-    lowered = message.lower()
-    candidates: List[str] = []
-    available = [agent.name for agent in agents]
+    lowered = (text or "").lower()
+    scores = {name: 0 for name in agent_order if name in agent_map}
+    if not scores:
+        return []
 
-    def add(name: str) -> None:
-        if name in available and name not in candidates:
-            candidates.append(name)
+    def bump(names: Iterable[str], weight: int = 1) -> None:
+        for name in names:
+            if name in scores:
+                scores[name] += weight
 
-    stress_words = ["压力", "焦虑", "紧张", "burnout", "stress"]
-    sad_words = ["难过", "伤心", "郁闷", "哭", "失落"]
-    angry_words = ["生气", "愤怒", "火大", "不公平", "气死"]
-    danger_words = ["危险", "风险", "害怕", "担心", "担忧", "怕", "小心"]
-    disgust_words = ["恶心", "讨厌", "无语", "糟糕", "脏", "不雅", "粗俗"]
+    stress_words = ["压力", "紧张", "焦虑", "burnout", "stress", "累"]
+    sad_words = ["伤心", "难过", "委屈", "失落", "沮丧", "哭"]
+    angry_words = ["生气", "愤怒", "火大", "气死", "傻逼", "垃圾", "讨厌", "怼"]
+    danger_words = ["风险", "危险", "害怕", "担心", "担忧", "怕", "恐", "小心"]
+    disgust_words = ["恶心", "无语", "脏", "low", "没格", "不雅", "粗鲁", "粗俗"]
+    support_words = ["感谢", "谢谢", "支持", "开心", "快乐", "放松", "慰藉"]
 
-    if any(word in lowered for word in stress_words + sad_words):
-        add("忧忧")
+    if any(word in lowered for word in stress_words):
+        bump(["忧忧", "乐乐"], 2)
+    if any(word in lowered for word in sad_words):
+        bump(["忧忧"], 2)
     if any(word in lowered for word in angry_words):
-        add("怒怒")
+        bump(["怒怒", "厌厌"], 2)
     if any(word in lowered for word in danger_words):
-        add("恐恐")
+        bump(["恐恐"], 2)
     if any(word in lowered for word in disgust_words):
-        add("厌厌")
+        bump(["厌厌"], 2)
+    if any(word in lowered for word in support_words):
+        bump(["乐乐"], 2)
 
-    # default cheerful boost when no other match
-    if not candidates:
-        add("乐乐")
+    if re.search(r"老板|领导|上司|公司|同事", lowered):
+        bump(["怒怒", "厌厌"], 1)
+    if re.search(r"怎么办|如何|怎么处理|怎么面对", lowered):
+        bump(["忧忧", "恐恐"], 1)
+    if "想法" in lowered or "建议" in lowered:
+        bump(["怒怒", "忧忧"], 1)
+    if "安全" in lowered or "风险" in lowered:
+        bump(["恐恐"], 2)
 
-    # ensure乐乐 always available as warm follow-up
-    if "乐乐" not in candidates and len(candidates) < 2:
-        add("乐乐")
+    # Give a gentle boost to乐乐 as默认 cheerleader
+    if "乐乐" in scores:
+        scores["乐乐"] = max(scores["乐乐"], 1)
 
-    return candidates[:MAX_VISIBLE_REPLIES]
+    ranked = [
+        name
+        for name, score in sorted(
+            scores.items(),
+            key=lambda item: (-item[1], agent_order.index(item[0])),
+        )
+        if score > 0
+    ]
+
+    if not ranked and agent_order:
+        ranked = [agent_order[0]]
+
+    return ranked[: MAX_VISIBLE_REPLIES]
+
+
+def _ensure_agent_registry(session: Dict[str, object], manager: GroupChatManager) -> tuple[Dict[str, AssistantAgent], List[str]]:
+    agent_map = session.get("agent_map")
+    agent_order = session.get("agent_order")
+    if not agent_map or not agent_order:
+        assistants = [agent for agent in manager.groupchat.agents if isinstance(agent, AssistantAgent)]
+        agent_map = {agent.name: agent for agent in assistants}
+        agent_order = [agent.name for agent in assistants]
+        session["agent_map"] = agent_map
+        session["agent_order"] = agent_order
+    return agent_map, agent_order
+
+
+def _determine_allowed_agents(
+    session: Dict[str, object],
+    manager: GroupChatManager,
+    message: str,
+) -> tuple[List[AssistantAgent], set[str], int]:
+    agent_map, agent_order = _ensure_agent_registry(session, manager)
+    history: List[str] = session.setdefault("history", [])
+    text = (message or "").strip()
+    if text:
+        if not history or history[-1] != text:
+            history.append(text)
+            if len(history) > 10:
+                del history[:-10]
+    context_window = " ".join(history[-4:])
+    allowed_names = suggest_bots(context_window or text, agent_order, agent_map)
+    if not allowed_names and agent_order:
+        allowed_names = [agent_order[0]]
+    allowed_agents = [agent_map[name] for name in agent_order if name in allowed_names]
+    if not allowed_agents and agent_order:
+        allowed_agents = [agent_map[agent_order[0]]]
+    allowed_names_ordered = [agent.name for agent in allowed_agents]
+    allowed_name_set = set(allowed_names_ordered)
+    visible_limit = max(1, min(len(allowed_agents), MAX_VISIBLE_REPLIES))
+    session["allowed_names"] = allowed_names_ordered
+    return allowed_agents, allowed_name_set, visible_limit
+
+
+def _configure_groupchat(
+    manager: GroupChatManager, user: UserProxyAgent, allowed_agents: List[AssistantAgent]
+) -> Callable[[], None]:
+    groupchat = manager.groupchat
+    original_agents = list(groupchat.agents)
+    original_max_round = groupchat.max_round
+    original_transitions = deepcopy(groupchat.allowed_speaker_transitions_dict)
+    participants = [user, *allowed_agents]
+    groupchat.agents = participants
+    groupchat.max_round = max(1, len(allowed_agents))
+    groupchat.allowed_speaker_transitions_dict = {
+        agent: [other for other in participants if other != agent]
+        for agent in participants
+    }
+
+    def restore() -> None:
+        groupchat.agents = original_agents
+        groupchat.max_round = original_max_round
+        groupchat.allowed_speaker_transitions_dict = original_transitions
+
+    return restore
 
 
 STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
@@ -261,33 +348,17 @@ def send_message():
     user: UserProxyAgent = session["user"]
     manager: GroupChatManager = session["manager"]
     start = session.get("last", 0)
-    agent_map: Dict[str, AssistantAgent] = session.get("agent_map", {})
-    agent_order: List[str] = session.get("agent_order", list(agent_map.keys()))
-    if not agent_map:
-        bot_agents = [agent for agent in manager.groupchat.agents if isinstance(agent, AssistantAgent)]
-        agent_map = {agent.name: agent for agent in bot_agents}
-        agent_order = [agent.name for agent in bot_agents]
-        session["agent_map"] = agent_map
-        session["agent_order"] = agent_order
-
-    allowed_names = suggest_bots(message or "", agent_map.values())
-    if not allowed_names and agent_order:
-        allowed_names = [agent_order[0]]
-    allowed_agents = [agent_map[name] for name in agent_order if name in allowed_names]
-    if not allowed_agents and agent_order:
-        allowed_agents = [agent_map[agent_order[0]]]
-
-    original_agents = list(manager.groupchat.agents)
-    manager.groupchat.agents = [user, *allowed_agents]
+    allowed_agents, allowed_name_set, visible_limit = _determine_allowed_agents(session, manager, message or "")
+    cleanup = _configure_groupchat(manager, user, allowed_agents)
+    raw_replies: List[Dict] = []
     try:
         user.initiate_chat(manager, message=message, clear_history=False)
+        raw_replies = manager.groupchat.messages[start + 1 :]
     finally:
-        manager.groupchat.agents = original_agents
-    raw_replies = manager.groupchat.messages[start + 1 :]
+        cleanup()
     session["last"] = len(manager.groupchat.messages)
     replies = []
     seen_names: set[str] = set()
-    allowed_name_set = {agent.name for agent in allowed_agents}
     for m in raw_replies:
         if m["name"] == user.name:
             continue
@@ -296,7 +367,7 @@ def send_message():
         seen_names.add(m["name"])
         for seg in split_content(m["content"]):
             replies.append({"name": m["name"], "content": seg})
-        if len(seen_names) >= MAX_VISIBLE_REPLIES:
+        if len(seen_names) >= visible_limit:
             break
     return jsonify({"replies": replies})
 
@@ -316,28 +387,8 @@ def send_message_stream():
     manager: GroupChatManager = session["manager"]
     start = session.get("last", 0)
     idx = start + 1
-    agent_map: Dict[str, AssistantAgent] = session.get("agent_map", {})
-    agent_order: List[str] = session.get("agent_order", list(agent_map.keys()))
-    if not agent_map:
-        bot_agents = [agent for agent in manager.groupchat.agents if isinstance(agent, AssistantAgent)]
-        agent_map = {agent.name: agent for agent in bot_agents}
-        agent_order = [agent.name for agent in bot_agents]
-        session["agent_map"] = agent_map
-        session["agent_order"] = agent_order
-
-    allowed_names = suggest_bots(message or "", agent_map.values())
-    if not allowed_names and agent_order:
-        allowed_names = [agent_order[0]]
-    allowed_agents = [agent_map[name] for name in agent_order if name in allowed_names]
-    if not allowed_agents and agent_order:
-        allowed_agents = [agent_map[agent_order[0]]]
-    allowed_name_set = {agent.name for agent in allowed_agents}
-
-    original_agents = list(manager.groupchat.agents)
-    manager.groupchat.agents = [user, *allowed_agents]
-
-    def cleanup() -> None:
-        manager.groupchat.agents = original_agents
+    allowed_agents, allowed_name_set, visible_limit = _determine_allowed_agents(session, manager, message or "")
+    cleanup = _configure_groupchat(manager, user, allowed_agents)
 
     def run_chat() -> None:
         try:
@@ -364,9 +415,9 @@ def send_message_stream():
                     for seg in split_content(m["content"]):
                         data = json.dumps({"name": m["name"], "content": seg}, ensure_ascii=False)
                         yield f"data: {data}\n\n"
-                    if len(seen_names) >= MAX_VISIBLE_REPLIES:
+                    if len(seen_names) >= visible_limit:
                         break
-                if len(seen_names) >= MAX_VISIBLE_REPLIES:
+                if len(seen_names) >= visible_limit:
                     break
                 time.sleep(0.1)
         finally:
