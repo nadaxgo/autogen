@@ -29,6 +29,7 @@ LLM_CONFIG: Dict = {
 
 
 MAX_VISIBLE_REPLIES = 2
+MAX_GROUP_ROUNDS = 50
 
 
 def build_manager(bots: List[str] | None = None) -> tuple[UserProxyAgent, GroupChatManager]:
@@ -132,7 +133,7 @@ def build_manager(bots: List[str] | None = None) -> tuple[UserProxyAgent, GroupC
     groupchat = GroupChat(
         agents=[user, *selected],
         messages=[],
-        max_round=4,
+        max_round=MAX_GROUP_ROUNDS,
         speaker_selection_method="auto",
         allow_repeat_speaker=False,
     )
@@ -206,7 +207,8 @@ def list_avatars() -> Response:
         path = os.path.join(AVATAR_DIR, fname)
         if os.path.isfile(path):
             name, _ = os.path.splitext(fname)
-            files[name] = f"/avatars/{fname}"
+            stamp = int(os.path.getmtime(path))
+            files[name] = f"/avatars/{fname}?v={stamp}"
     return jsonify(files)
 
 
@@ -222,7 +224,8 @@ def upload_avatar(name: str) -> Response:
     fname = f"{safe_name}{ext}"
     path = os.path.join(AVATAR_DIR, fname)
     file.save(path)
-    return jsonify({"url": f"/avatars/{fname}"})
+    stamp = int(os.path.getmtime(path))
+    return jsonify({"url": f"/avatars/{fname}?v={stamp}"})
 
 
 @app.post("/chat/start")
@@ -232,7 +235,16 @@ def start_chat():
     bots: List[str] | None = data.get("bots")
     user, manager = build_manager(bots)
     session_id = str(uuid.uuid4())
-    sessions[session_id] = {"user": user, "manager": manager, "last": 0}
+    assistants = [agent for agent in manager.groupchat.agents if isinstance(agent, AssistantAgent)]
+    agent_map = {agent.name: agent for agent in assistants}
+    agent_order = [agent.name for agent in assistants]
+    sessions[session_id] = {
+        "user": user,
+        "manager": manager,
+        "last": 0,
+        "agent_map": agent_map,
+        "agent_order": agent_order,
+    }
     return jsonify({"session_id": session_id})
 
 
@@ -249,21 +261,37 @@ def send_message():
     user: UserProxyAgent = session["user"]
     manager: GroupChatManager = session["manager"]
     start = session.get("last", 0)
-    bot_agents = [agent for agent in manager.groupchat.agents if isinstance(agent, AssistantAgent)]
-    allowed_names = suggest_bots(message or "", bot_agents)
-    if not allowed_names and bot_agents:
-        allowed_names = [bot_agents[0].name]
-    manager.groupchat.max_round = len(allowed_names) + 1
-    session["allowed"] = allowed_names
-    user.initiate_chat(manager, message=message, clear_history=False)
+    agent_map: Dict[str, AssistantAgent] = session.get("agent_map", {})
+    agent_order: List[str] = session.get("agent_order", list(agent_map.keys()))
+    if not agent_map:
+        bot_agents = [agent for agent in manager.groupchat.agents if isinstance(agent, AssistantAgent)]
+        agent_map = {agent.name: agent for agent in bot_agents}
+        agent_order = [agent.name for agent in bot_agents]
+        session["agent_map"] = agent_map
+        session["agent_order"] = agent_order
+
+    allowed_names = suggest_bots(message or "", agent_map.values())
+    if not allowed_names and agent_order:
+        allowed_names = [agent_order[0]]
+    allowed_agents = [agent_map[name] for name in agent_order if name in allowed_names]
+    if not allowed_agents and agent_order:
+        allowed_agents = [agent_map[agent_order[0]]]
+
+    original_agents = list(manager.groupchat.agents)
+    manager.groupchat.agents = [user, *allowed_agents]
+    try:
+        user.initiate_chat(manager, message=message, clear_history=False)
+    finally:
+        manager.groupchat.agents = original_agents
     raw_replies = manager.groupchat.messages[start + 1 :]
     session["last"] = len(manager.groupchat.messages)
     replies = []
     seen_names: set[str] = set()
+    allowed_name_set = {agent.name for agent in allowed_agents}
     for m in raw_replies:
         if m["name"] == user.name:
             continue
-        if m["name"] not in allowed_names or m["name"] in seen_names:
+        if m["name"] not in allowed_name_set or m["name"] in seen_names:
             continue
         seen_names.add(m["name"])
         for seg in split_content(m["content"]):
@@ -288,15 +316,34 @@ def send_message_stream():
     manager: GroupChatManager = session["manager"]
     start = session.get("last", 0)
     idx = start + 1
-    bot_agents = [agent for agent in manager.groupchat.agents if isinstance(agent, AssistantAgent)]
-    allowed_names = suggest_bots(message or "", bot_agents)
-    if not allowed_names and bot_agents:
-        allowed_names = [bot_agents[0].name]
-    manager.groupchat.max_round = len(allowed_names) + 1
-    session["allowed"] = allowed_names
+    agent_map: Dict[str, AssistantAgent] = session.get("agent_map", {})
+    agent_order: List[str] = session.get("agent_order", list(agent_map.keys()))
+    if not agent_map:
+        bot_agents = [agent for agent in manager.groupchat.agents if isinstance(agent, AssistantAgent)]
+        agent_map = {agent.name: agent for agent in bot_agents}
+        agent_order = [agent.name for agent in bot_agents]
+        session["agent_map"] = agent_map
+        session["agent_order"] = agent_order
+
+    allowed_names = suggest_bots(message or "", agent_map.values())
+    if not allowed_names and agent_order:
+        allowed_names = [agent_order[0]]
+    allowed_agents = [agent_map[name] for name in agent_order if name in allowed_names]
+    if not allowed_agents and agent_order:
+        allowed_agents = [agent_map[agent_order[0]]]
+    allowed_name_set = {agent.name for agent in allowed_agents}
+
+    original_agents = list(manager.groupchat.agents)
+    manager.groupchat.agents = [user, *allowed_agents]
+
+    def cleanup() -> None:
+        manager.groupchat.agents = original_agents
 
     def run_chat() -> None:
-        user.initiate_chat(manager, message=message, clear_history=False)
+        try:
+            user.initiate_chat(manager, message=message, clear_history=False)
+        finally:
+            pass
 
     thread = threading.Thread(target=run_chat)
     thread.start()
@@ -304,24 +351,28 @@ def send_message_stream():
     def generate():
         nonlocal idx
         seen_names: set[str] = set()
-        while thread.is_alive() or idx < len(manager.groupchat.messages):
-            while idx < len(manager.groupchat.messages):
-                m = manager.groupchat.messages[idx]
-                idx += 1
-                if m["name"] == user.name:
-                    continue
-                if m["name"] not in allowed_names or m["name"] in seen_names:
-                    continue
-                seen_names.add(m["name"])
-                for seg in split_content(m["content"]):
-                    data = json.dumps({"name": m["name"], "content": seg}, ensure_ascii=False)
-                    yield f"data: {data}\n\n"
+        try:
+            while thread.is_alive() or idx < len(manager.groupchat.messages):
+                while idx < len(manager.groupchat.messages):
+                    m = manager.groupchat.messages[idx]
+                    idx += 1
+                    if m["name"] == user.name:
+                        continue
+                    if m["name"] not in allowed_name_set or m["name"] in seen_names:
+                        continue
+                    seen_names.add(m["name"])
+                    for seg in split_content(m["content"]):
+                        data = json.dumps({"name": m["name"], "content": seg}, ensure_ascii=False)
+                        yield f"data: {data}\n\n"
+                    if len(seen_names) >= MAX_VISIBLE_REPLIES:
+                        break
                 if len(seen_names) >= MAX_VISIBLE_REPLIES:
                     break
-            time.sleep(0.1)
-            if len(seen_names) >= MAX_VISIBLE_REPLIES:
-                break
-        session["last"] = len(manager.groupchat.messages)
+                time.sleep(0.1)
+        finally:
+            thread.join(timeout=0.2)
+            session["last"] = len(manager.groupchat.messages)
+            cleanup()
 
     return Response(stream_with_context(generate()), mimetype="text/event-stream")
 
