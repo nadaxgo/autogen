@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 import os
 import re
-import threading
 import time
 import uuid
 from typing import Callable, Dict, Iterable, List
@@ -275,6 +274,37 @@ def _configure_groupchat(
     return restore
 
 
+def _collect_replies(
+    manager: GroupChatManager,
+    start: int,
+    allowed_name_set: set[str],
+    visible_limit: int,
+    user_name: str,
+) -> tuple[List[Dict[str, str]], int]:
+    replies: List[Dict[str, str]] = []
+    seen_names: set[str] = set()
+    cutoff_index = start
+    messages = manager.groupchat.messages
+    for idx in range(start + 1, len(messages)):
+        message = messages[idx]
+        if message.get("name") == user_name:
+            continue
+        name = message.get("name")
+        if name not in allowed_name_set or name in seen_names:
+            continue
+        seen_names.add(name)
+        for segment in split_content(message.get("content", "")):
+            replies.append({"name": name, "content": segment})
+        cutoff_index = idx
+        if len(seen_names) >= visible_limit:
+            break
+
+    if cutoff_index + 1 < len(messages):
+        del messages[cutoff_index + 1 :]
+
+    return replies, cutoff_index
+
+
 STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
 app = Flask(__name__, static_folder=STATIC_DIR, static_url_path="")
 sessions: Dict[str, Dict[str, object]] = {}
@@ -354,25 +384,16 @@ def send_message():
     start = session.get("last", 0)
     allowed_agents, allowed_name_set, visible_limit = _determine_allowed_agents(session, manager, message or "")
     cleanup = _configure_groupchat(manager, user, allowed_agents)
-    raw_replies: List[Dict] = []
+    replies: List[Dict[str, str]] = []
+    cutoff_index = start
     try:
         user.initiate_chat(manager, message=message, clear_history=False)
-        raw_replies = manager.groupchat.messages[start + 1 :]
+        replies, cutoff_index = _collect_replies(
+            manager, start, allowed_name_set, visible_limit, user.name
+        )
     finally:
         cleanup()
-    session["last"] = len(manager.groupchat.messages)
-    replies = []
-    seen_names: set[str] = set()
-    for m in raw_replies:
-        if m["name"] == user.name:
-            continue
-        if m["name"] not in allowed_name_set or m["name"] in seen_names:
-            continue
-        seen_names.add(m["name"])
-        for seg in split_content(m["content"]):
-            replies.append({"name": m["name"], "content": seg})
-        if len(seen_names) >= visible_limit:
-            break
+    session["last"] = min(cutoff_index + 1, len(manager.groupchat.messages))
     return jsonify({"replies": replies})
 
 
@@ -393,41 +414,22 @@ def send_message_stream():
     idx = start + 1
     allowed_agents, allowed_name_set, visible_limit = _determine_allowed_agents(session, manager, message or "")
     cleanup = _configure_groupchat(manager, user, allowed_agents)
-
-    def run_chat() -> None:
-        try:
-            user.initiate_chat(manager, message=message, clear_history=False)
-        finally:
-            pass
-
-    thread = threading.Thread(target=run_chat)
-    thread.start()
+    replies: List[Dict[str, str]] = []
+    cutoff_index = start
+    try:
+        user.initiate_chat(manager, message=message, clear_history=False)
+        replies, cutoff_index = _collect_replies(
+            manager, start, allowed_name_set, visible_limit, user.name
+        )
+    finally:
+        cleanup()
+    session["last"] = min(cutoff_index + 1, len(manager.groupchat.messages))
 
     def generate():
-        nonlocal idx
-        seen_names: set[str] = set()
-        try:
-            while thread.is_alive() or idx < len(manager.groupchat.messages):
-                while idx < len(manager.groupchat.messages):
-                    m = manager.groupchat.messages[idx]
-                    idx += 1
-                    if m["name"] == user.name:
-                        continue
-                    if m["name"] not in allowed_name_set or m["name"] in seen_names:
-                        continue
-                    seen_names.add(m["name"])
-                    for seg in split_content(m["content"]):
-                        data = json.dumps({"name": m["name"], "content": seg}, ensure_ascii=False)
-                        yield f"data: {data}\n\n"
-                    if len(seen_names) >= visible_limit:
-                        break
-                if len(seen_names) >= visible_limit:
-                    break
-                time.sleep(0.1)
-        finally:
-            thread.join(timeout=0.2)
-            session["last"] = len(manager.groupchat.messages)
-            cleanup()
+        for item in replies:
+            data = json.dumps(item, ensure_ascii=False)
+            yield f"data: {data}\n\n"
+            time.sleep(0.05)
 
     return Response(stream_with_context(generate()), mimetype="text/event-stream")
 
