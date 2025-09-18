@@ -337,6 +337,18 @@
         font-weight: 600;
         color: var(--text-primary);
       }
+      .join-status {
+        min-height: 1.2em;
+        margin: 4px 0 0;
+        font-size: 0.85rem;
+        color: var(--text-secondary);
+      }
+      .join-status.error {
+        color: #d1445c;
+      }
+      .join-status.warn {
+        color: #d19632;
+      }
       @keyframes fade-in {
         from { opacity: 0; transform: translateY(8px); }
         to { opacity: 1; transform: translateY(0); }
@@ -428,6 +440,7 @@
         </div>
       </div>
       <button id="join">进入聊天室</button>
+      <p id="join-status" class="join-status" aria-live="polite"></p>
     </section>
     <section id="chat" class="view" style="display:none;">
       <div id="messages"></div>
@@ -450,6 +463,20 @@ const defaultAvatars = {
   '厌厌': '🙄',
   '系统': '🤖'
 };
+const joinStatus = document.getElementById('join-status');
+
+function updateJoinStatus(message = '', tone = 'info') {
+  if (!joinStatus) {
+    return;
+  }
+  joinStatus.textContent = message;
+  joinStatus.classList.remove('error', 'warn');
+  if (tone === 'error') {
+    joinStatus.classList.add('error');
+  } else if (tone === 'warn') {
+    joinStatus.classList.add('warn');
+  }
+}
 
 function setPreview(name, src, { isObjectUrl = false } = {}) {
   const preview = document.querySelector(`[data-preview="${name}"]`);
@@ -530,6 +557,7 @@ async function joinChat() {
   joinButton.dataset.originalText = originalLabel;
   joinButton.disabled = true;
   joinButton.textContent = '进入中…';
+  updateJoinStatus('正在上传头像…');
 
   const selected = [];
   const uploads = [];
@@ -553,8 +581,21 @@ async function joinChat() {
 
   try {
     if (uploads.length) {
-      await Promise.all(uploads);
+      const results = await Promise.allSettled(uploads);
+      const failed = results.filter(result => result.status === 'rejected');
+      if (failed.length) {
+        updateJoinStatus('部分头像上传失败，将继续使用默认头像。', 'warn');
+      } else {
+        updateJoinStatus('头像上传完成，正在创建会话…');
+      }
+    } else {
+      updateJoinStatus('正在创建会话…');
     }
+
+    if (selected.length === 0) {
+      throw new Error('未选择任何情绪角色');
+    }
+
     const resp = await fetch('/chat/start', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -567,14 +608,19 @@ async function joinChat() {
     sessionId = data.session_id;
     joinButton.textContent = originalLabel;
     joinButton.disabled = false;
+    updateJoinStatus('');
     document.getElementById('lobby').style.display = 'none';
     const chat = document.getElementById('chat');
     chat.style.display = 'flex';
     document.getElementById('input').focus();
   } catch (error) {
     console.error('进入聊天室失败', error);
-    joinButton.disabled = false;
     joinButton.textContent = '重试进入';
+    updateJoinStatus(error.message || '进入失败，请稍后再试。', 'error');
+  } finally {
+    if (document.getElementById('lobby').style.display !== 'none') {
+      joinButton.disabled = false;
+    }
   }
 }
 
