@@ -8,7 +8,7 @@ import re
 import threading
 import time
 import uuid
-from typing import Dict, List
+from typing import Dict, Iterable, List
 
 from flask import Flask, Response, jsonify, request, stream_with_context
 
@@ -28,6 +28,9 @@ LLM_CONFIG: Dict = {
 }
 
 
+MAX_VISIBLE_REPLIES = 2
+
+
 def build_manager(bots: List[str] | None = None) -> tuple[UserProxyAgent, GroupChatManager]:
     """Create a group chat manager with Inside Out-style agents."""
     joy = AssistantAgent(
@@ -42,7 +45,7 @@ def build_manager(bots: List[str] | None = None) -> tuple[UserProxyAgent, GroupC
             "摆脱负面情绪；当用户遇到烦恼时第一时间开口，提出解决方案或"
             "积极建议，用鼓励和赞美把用户带出困境。多句回答请换行输出，"
             "保持每行只含一句话，避免长段落。回答时结合之前所有对话内容。"
-            "每轮回复控制在2到3行，emoji需与文字在同一行，不要单独成行。若队友已给出完整回应，你可以用一两句俏皮话收尾或暂时不插话。"
+            "每轮回复控制在1到2行，emoji需与文字在同一行，不要单独成行。若队友已给出完整回应，你可以用一两句俏皮话收尾或暂时不插话。"
         ),
         description="保持团队乐观积极的情绪管理员",
         llm_config=LLM_CONFIG,
@@ -59,7 +62,7 @@ def build_manager(bots: List[str] | None = None) -> tuple[UserProxyAgent, GroupC
             "达；讨论失败或挫折时提醒大家注意影响并进行情绪疏导。行动：总是"
             "先接住消极情绪，与用户同频后再给出温和建议或提醒。多句回答请"
             "换行输出，保持每行只含一句话，避免长段落。回答时结合之前所有对话内容。"
-            "每轮回复控制在2到3行，emoji需与文字在同一行，不要单独成行。若情绪已被安抚，可以轻声一句或暂时沉默观察。"
+            "每轮回复控制在1到2行，emoji需与文字在同一行，不要单独成行。若情绪已被安抚，可以轻声一句或暂时沉默观察。"
         ),
         description="识别问题和潜在风险的情绪管理员",
         llm_config=LLM_CONFIG,
@@ -74,7 +77,7 @@ def build_manager(bots: List[str] | None = None) -> tuple[UserProxyAgent, GroupC
             "出现不公或拖沓时迅速指出问题，推动团队解决。行动：用户受到不"
             "公对待或遇到拖延时立即介入，提出明确的反击或改进方案，强调责"
             "任与时限。多句回答请换行输出，保持每行只含一句话，避免长段落。回答时结合之前所有对话内容。"
-            "每轮回复控制在2到3行，emoji需与文字在同一行，不要单独成行。若问题已解决，可简短强调重点或留白等待他人。"
+            "每轮回复控制在1到2行，emoji需与文字在同一行，不要单独成行。若问题已解决，可简短强调重点或留白等待他人。"
         ),
         description="维护公平和效率的情绪管理员",
         llm_config=LLM_CONFIG,
@@ -90,7 +93,7 @@ def build_manager(bots: List[str] | None = None) -> tuple[UserProxyAgent, GroupC
             "观点。行动：风险成为焦点时列出潜在后果并提供备选方案，若警告被"
             "忽视会持续提醒。多句回答请换行输出，保持每行只含一句话，避免长"
             "段落。回答时结合之前所有对话内容。"
-            "每轮回复控制在2到3行，emoji需与文字在同一行，不要单独成行。若风险已被覆盖，可以一句提示或暂缓发言。"
+            "每轮回复控制在1到2行，emoji需与文字在同一行，不要单独成行。若风险已被覆盖，可以一句提示或暂缓发言。"
         ),
         description="提醒注意安全与危险的情绪管理员",
         llm_config=LLM_CONFIG,
@@ -106,7 +109,7 @@ def build_manager(bots: List[str] | None = None) -> tuple[UserProxyAgent, GroupC
             "注意形象与品味；讨论混乱或跑偏时直接指出问题并提供更优雅方案。行动："
             "只有当别人的方案触碰底线时才出手，倾向先冷冷地点评，再决定要不要给出"
             "替代方案。多句回答请换行输出，保持每行只含一句话，避免长段落。回答时"
-            "结合之前所有对话内容。每轮回复控制在2到3行，emoji需与文字在同一行，不"
+            "结合之前所有对话内容。每轮回复控制在1到2行，emoji需与文字在同一行，不"
             "要单独成行。如若问题与品味无关，可以一句冷淡点评或保持沉默。"
         ),
         description="负责守护品味与界限的情绪管理员",
@@ -123,7 +126,7 @@ def build_manager(bots: List[str] | None = None) -> tuple[UserProxyAgent, GroupC
     selected = [agents_map[n] for n in bots or agents_map.keys() if n in agents_map]
     user = UserProxyAgent(
         name="用户",
-        human_input_mode="ALWAYS",
+        human_input_mode="NEVER",
         code_execution_config={"use_docker": False},
     )
     groupchat = GroupChat(
@@ -131,16 +134,53 @@ def build_manager(bots: List[str] | None = None) -> tuple[UserProxyAgent, GroupC
         messages=[],
         max_round=4,
         speaker_selection_method="auto",
-        allow_repeat_speaker=True,
+        allow_repeat_speaker=False,
     )
     manager = GroupChatManager(groupchat, llm_config=LLM_CONFIG)
     return user, manager
 
 
 def split_content(text: str) -> List[str]:
-    """Split LLM output into at most three lines."""
+    """Split LLM output into at most two lines."""
     parts = [p.strip() for p in text.strip().splitlines() if p.strip()]
-    return parts[:3]
+    return parts[:2]
+
+
+def suggest_bots(message: str, agents: Iterable[AssistantAgent]) -> List[str]:
+    """Select up to two bot names that best fit the given message."""
+
+    lowered = message.lower()
+    candidates: List[str] = []
+    available = [agent.name for agent in agents]
+
+    def add(name: str) -> None:
+        if name in available and name not in candidates:
+            candidates.append(name)
+
+    stress_words = ["压力", "焦虑", "紧张", "burnout", "stress"]
+    sad_words = ["难过", "伤心", "郁闷", "哭", "失落"]
+    angry_words = ["生气", "愤怒", "火大", "不公平", "气死"]
+    danger_words = ["危险", "风险", "害怕", "担心", "担忧", "怕", "小心"]
+    disgust_words = ["恶心", "讨厌", "无语", "糟糕", "脏", "不雅", "粗俗"]
+
+    if any(word in lowered for word in stress_words + sad_words):
+        add("忧忧")
+    if any(word in lowered for word in angry_words):
+        add("怒怒")
+    if any(word in lowered for word in danger_words):
+        add("恐恐")
+    if any(word in lowered for word in disgust_words):
+        add("厌厌")
+
+    # default cheerful boost when no other match
+    if not candidates:
+        add("乐乐")
+
+    # ensure乐乐 always available as warm follow-up
+    if "乐乐" not in candidates and len(candidates) < 2:
+        add("乐乐")
+
+    return candidates[:MAX_VISIBLE_REPLIES]
 
 
 STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
@@ -209,15 +249,27 @@ def send_message():
     user: UserProxyAgent = session["user"]
     manager: GroupChatManager = session["manager"]
     start = session.get("last", 0)
+    bot_agents = [agent for agent in manager.groupchat.agents if isinstance(agent, AssistantAgent)]
+    allowed_names = suggest_bots(message or "", bot_agents)
+    if not allowed_names and bot_agents:
+        allowed_names = [bot_agents[0].name]
+    manager.groupchat.max_round = len(allowed_names) + 1
+    session["allowed"] = allowed_names
     user.initiate_chat(manager, message=message, clear_history=False)
     raw_replies = manager.groupchat.messages[start + 1 :]
     session["last"] = len(manager.groupchat.messages)
     replies = []
+    seen_names: set[str] = set()
     for m in raw_replies:
         if m["name"] == user.name:
             continue
+        if m["name"] not in allowed_names or m["name"] in seen_names:
+            continue
+        seen_names.add(m["name"])
         for seg in split_content(m["content"]):
             replies.append({"name": m["name"], "content": seg})
+        if len(seen_names) >= MAX_VISIBLE_REPLIES:
+            break
     return jsonify({"replies": replies})
 
 
@@ -236,6 +288,12 @@ def send_message_stream():
     manager: GroupChatManager = session["manager"]
     start = session.get("last", 0)
     idx = start + 1
+    bot_agents = [agent for agent in manager.groupchat.agents if isinstance(agent, AssistantAgent)]
+    allowed_names = suggest_bots(message or "", bot_agents)
+    if not allowed_names and bot_agents:
+        allowed_names = [bot_agents[0].name]
+    manager.groupchat.max_round = len(allowed_names) + 1
+    session["allowed"] = allowed_names
 
     def run_chat() -> None:
         user.initiate_chat(manager, message=message, clear_history=False)
@@ -245,16 +303,24 @@ def send_message_stream():
 
     def generate():
         nonlocal idx
+        seen_names: set[str] = set()
         while thread.is_alive() or idx < len(manager.groupchat.messages):
             while idx < len(manager.groupchat.messages):
                 m = manager.groupchat.messages[idx]
                 idx += 1
                 if m["name"] == user.name:
                     continue
+                if m["name"] not in allowed_names or m["name"] in seen_names:
+                    continue
+                seen_names.add(m["name"])
                 for seg in split_content(m["content"]):
                     data = json.dumps({"name": m["name"], "content": seg}, ensure_ascii=False)
                     yield f"data: {data}\n\n"
+                if len(seen_names) >= MAX_VISIBLE_REPLIES:
+                    break
             time.sleep(0.1)
+            if len(seen_names) >= MAX_VISIBLE_REPLIES:
+                break
         session["last"] = len(manager.groupchat.messages)
 
     return Response(stream_with_context(generate()), mimetype="text/event-stream")

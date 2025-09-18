@@ -612,6 +612,10 @@ async function joinChat() {
     document.getElementById('lobby').style.display = 'none';
     const chat = document.getElementById('chat');
     chat.style.display = 'flex';
+    const inputArea = document.getElementById('input-area');
+    if (inputArea) {
+      inputArea.style.display = 'flex';
+    }
     document.getElementById('input').focus();
   } catch (error) {
     console.error('进入聊天室失败', error);
