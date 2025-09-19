@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 import os
 import re
+import threading
+import time
 import uuid
 from typing import Callable, Dict, Iterable, List
 
@@ -427,21 +429,47 @@ def send_message_stream():
     idx = start + 1
     allowed_agents, allowed_name_set, visible_limit = _determine_allowed_agents(session, manager, message or "")
     cleanup = _configure_groupchat(manager, user, allowed_agents)
-    replies: List[Dict[str, str]] = []
-    cutoff_index = start
-    try:
-        user.initiate_chat(manager, message=message, clear_history=False)
-        replies, cutoff_index = _collect_replies(
-            manager, start, allowed_name_set, visible_limit, user.name
-        )
-    finally:
-        cleanup()
-    session["last"] = min(cutoff_index + 1, len(manager.groupchat.messages))
+
+    def run_chat() -> None:
+        try:
+            user.initiate_chat(manager, message=message, clear_history=False)
+        finally:
+            pass
+
+    thread = threading.Thread(target=run_chat)
+    thread.start()
 
     def generate():
-        for item in replies:
-            data = json.dumps(item, ensure_ascii=False)
-            yield f"data: {data}\n\n"
+        nonlocal idx
+        seen_names: set[str] = set()
+        try:
+            while True:
+                messages = manager.groupchat.messages
+                while idx < len(messages):
+                    current = messages[idx]
+                    idx += 1
+                    if current.get("name") == user.name:
+                        continue
+                    name = current.get("name")
+                    if name not in allowed_name_set or name in seen_names:
+                        continue
+                    seen_names.add(name)
+                    for segment in split_content(current.get("content", "")):
+                        data = json.dumps({"name": name, "content": segment}, ensure_ascii=False)
+                        yield f"data: {data}\n\n"
+                    if len(seen_names) >= visible_limit:
+                        break
+
+                if len(seen_names) >= visible_limit:
+                    break
+                if not thread.is_alive() and idx >= len(manager.groupchat.messages):
+                    break
+                time.sleep(0.05)
+        finally:
+            thread.join(timeout=0.2)
+            last_index = min(idx, len(manager.groupchat.messages))
+            session["last"] = last_index
+            cleanup()
 
     response = Response(stream_with_context(generate()), mimetype="text/event-stream")
     response.headers["Cache-Control"] = "no-store"
