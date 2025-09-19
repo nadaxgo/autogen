@@ -343,6 +343,13 @@ def upload_avatar(name: str) -> Response:
     safe_name = re.sub(r"[^\w\u4e00-\u9fff-]", "_", name)
     ext = os.path.splitext(file.filename)[1] or ".png"
     fname = f"{safe_name}{ext}"
+    for existing in os.listdir(AVATAR_DIR):
+        base, _ = os.path.splitext(existing)
+        if base == safe_name:
+            try:
+                os.remove(os.path.join(AVATAR_DIR, existing))
+            except OSError:
+                pass
     path = os.path.join(AVATAR_DIR, fname)
     file.save(path)
     stamp = int(os.path.getmtime(path))
