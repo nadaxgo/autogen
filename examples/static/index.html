@@ -536,7 +536,7 @@ function createAvatarNode(name) {
 
 async function loadAvatars() {
   try {
-    const resp = await fetch('/avatars');
+    const resp = await fetch('/avatars', { cache: 'no-store' });
     if (!resp.ok) {
       return;
     }

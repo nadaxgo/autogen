@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 import os
 import re
-import time
 import uuid
 from typing import Callable, Dict, Iterable, List
 
@@ -128,6 +127,7 @@ def build_manager(bots: List[str] | None = None) -> tuple[UserProxyAgent, GroupC
         name="用户",
         human_input_mode="NEVER",
         code_execution_config={"use_docker": False},
+        max_consecutive_auto_reply=0,
     )
     groupchat = GroupChat(
         agents=[user, *selected],
@@ -330,7 +330,9 @@ def list_avatars() -> Response:
             name, _ = os.path.splitext(fname)
             stamp = int(os.path.getmtime(path))
             files[name] = f"/avatars/{fname}?v={stamp}"
-    return jsonify(files)
+    response = jsonify(files)
+    response.headers["Cache-Control"] = "no-store"
+    return response
 
 
 @app.post("/avatars/<name>")
@@ -353,7 +355,9 @@ def upload_avatar(name: str) -> Response:
     path = os.path.join(AVATAR_DIR, fname)
     file.save(path)
     stamp = int(os.path.getmtime(path))
-    return jsonify({"url": f"/avatars/{fname}?v={stamp}"})
+    response = jsonify({"url": f"/avatars/{fname}?v={stamp}"})
+    response.headers["Cache-Control"] = "no-store"
+    return response
 
 
 @app.post("/chat/start")
@@ -401,7 +405,9 @@ def send_message():
     finally:
         cleanup()
     session["last"] = min(cutoff_index + 1, len(manager.groupchat.messages))
-    return jsonify({"replies": replies})
+    response = jsonify({"replies": replies})
+    response.headers["Cache-Control"] = "no-store"
+    return response
 
 
 @app.post("/chat/send_stream")
@@ -436,9 +442,10 @@ def send_message_stream():
         for item in replies:
             data = json.dumps(item, ensure_ascii=False)
             yield f"data: {data}\n\n"
-            time.sleep(0.05)
 
-    return Response(stream_with_context(generate()), mimetype="text/event-stream")
+    response = Response(stream_with_context(generate()), mimetype="text/event-stream")
+    response.headers["Cache-Control"] = "no-store"
+    return response
 
 
 if __name__ == "__main__":
