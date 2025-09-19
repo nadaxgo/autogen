@@ -242,7 +242,7 @@ def _determine_allowed_agents(
         allowed_agents = [agent_map[agent_order[0]]]
     allowed_names_ordered = [agent.name for agent in allowed_agents]
     allowed_name_set = set(allowed_names_ordered)
-    visible_limit = max(1, min(len(allowed_agents), MAX_VISIBLE_REPLIES))
+    visible_limit = MAX_VISIBLE_REPLIES
     session["allowed_names"] = allowed_names_ordered
     return allowed_agents, allowed_name_set, visible_limit
 
@@ -283,7 +283,6 @@ def _collect_replies(
     user_name: str,
 ) -> tuple[List[Dict[str, str]], int]:
     replies: List[Dict[str, str]] = []
-    seen_names: set[str] = set()
     cutoff_index = start
     messages = manager.groupchat.messages
     for idx in range(start + 1, len(messages)):
@@ -291,13 +290,12 @@ def _collect_replies(
         if message.get("name") == user_name:
             continue
         name = message.get("name")
-        if name not in allowed_name_set or name in seen_names:
+        if name not in allowed_name_set:
             continue
-        seen_names.add(name)
         for segment in split_content(message.get("content", "")):
             replies.append({"name": name, "content": segment})
         cutoff_index = idx
-        if len(seen_names) >= visible_limit:
+        if len(replies) >= visible_limit:
             break
 
     if cutoff_index + 1 < len(messages):
@@ -440,7 +438,7 @@ def send_message_stream():
 
     def generate():
         nonlocal idx
-        seen_names: set[str] = set()
+        reply_count = 0
         thread_joined = False
         try:
             while True:
@@ -452,15 +450,17 @@ def send_message_stream():
                     if current.get("name") == user.name:
                         continue
                     name = current.get("name")
-                    if name not in allowed_name_set or name in seen_names:
+                    if name not in allowed_name_set:
                         progressed = True
                         continue
-                    seen_names.add(name)
                     for segment in split_content(current.get("content", "")):
                         data = json.dumps({"name": name, "content": segment}, ensure_ascii=False)
                         yield f"data: {data}\n\n"
+                        reply_count += 1
                     progressed = True
 
+                if reply_count >= visible_limit:
+                    break
                 if thread.is_alive():
                     time.sleep(0.05)
                     continue
