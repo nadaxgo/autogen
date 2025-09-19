@@ -445,6 +445,7 @@ def send_message_stream():
         try:
             while True:
                 messages = manager.groupchat.messages
+                progressed = False
                 while idx < len(messages):
                     current = messages[idx]
                     idx += 1
@@ -452,16 +453,14 @@ def send_message_stream():
                         continue
                     name = current.get("name")
                     if name not in allowed_name_set or name in seen_names:
+                        progressed = True
                         continue
                     seen_names.add(name)
                     for segment in split_content(current.get("content", "")):
                         data = json.dumps({"name": name, "content": segment}, ensure_ascii=False)
                         yield f"data: {data}\n\n"
-                    if len(seen_names) >= visible_limit:
-                        break
+                    progressed = True
 
-                if len(seen_names) >= visible_limit:
-                    break
                 if thread.is_alive():
                     time.sleep(0.05)
                     continue
@@ -469,7 +468,7 @@ def send_message_stream():
                     thread.join(timeout=0.2)
                     thread_joined = True
                     continue
-                if idx >= len(manager.groupchat.messages):
+                if not progressed and idx >= len(manager.groupchat.messages):
                     break
         finally:
             if not thread_joined:
