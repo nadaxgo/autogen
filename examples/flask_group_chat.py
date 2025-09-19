@@ -441,6 +441,7 @@ def send_message_stream():
     def generate():
         nonlocal idx
         seen_names: set[str] = set()
+        idle_checks = 0
         try:
             while True:
                 messages = manager.groupchat.messages
@@ -461,9 +462,18 @@ def send_message_stream():
 
                 if len(seen_names) >= visible_limit:
                     break
-                if not thread.is_alive() and idx >= len(manager.groupchat.messages):
-                    break
-                time.sleep(0.05)
+                if thread.is_alive():
+                    time.sleep(0.05)
+                    idle_checks = 0
+                    continue
+                # thread finished, but give it a few extra polls in case new messages arrive
+                if idx >= len(manager.groupchat.messages):
+                    idle_checks += 1
+                    if idle_checks >= 4:
+                        break
+                    time.sleep(0.05)
+                else:
+                    idle_checks = 0
         finally:
             thread.join(timeout=0.2)
             last_index = min(idx, len(manager.groupchat.messages))
