@@ -724,7 +724,8 @@ async function uploadAvatar(name, file) {
       throw new Error('上传失败');
     }
     const data = await resp.json();
-    registerAvatar(name, data.url);
+    const cacheBuster = data.url.includes('?') ? data.url : `${data.url}?v=${Date.now()}`;
+    registerAvatar(name, cacheBuster);
     return data;
   } catch (error) {
     console.error(`上传头像 ${name} 失败`, error);
