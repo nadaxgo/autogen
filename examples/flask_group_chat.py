@@ -287,20 +287,19 @@ def _collect_replies(
     messages = manager.groupchat.messages
     for idx in range(start + 1, len(messages)):
         message = messages[idx]
-        if message.get("name") == user_name:
-            continue
         name = message.get("name")
-        if name not in allowed_name_set:
+        if not name or name == user_name:
             continue
         for segment in split_content(message.get("content", "")):
             replies.append({"name": name, "content": segment})
+        if name not in allowed_name_set:
+            allowed_name_set.add(name)
         cutoff_index = idx
         if len(replies) >= visible_limit:
             break
 
     if cutoff_index + 1 < len(messages):
         del messages[cutoff_index + 1 :]
-
     return replies, cutoff_index
 
 
@@ -404,6 +403,17 @@ def send_message():
     finally:
         cleanup()
     session["last"] = min(cutoff_index + 1, len(manager.groupchat.messages))
+    if replies:
+        ordered = session.get("allowed_names", []) or []
+        seen = set(ordered)
+        extras: List[str] = []
+        for reply in replies:
+            name = reply.get("name")
+            if name and name not in seen:
+                seen.add(name)
+                extras.append(name)
+        if extras:
+            session["allowed_names"] = ordered + extras
     response = jsonify({"replies": replies})
     response.headers["Cache-Control"] = "no-store"
     return response
@@ -424,7 +434,10 @@ def send_message_stream():
     manager: GroupChatManager = session["manager"]
     start = session.get("last", 0)
     idx = start + 1
-    allowed_agents, allowed_name_set, visible_limit = _determine_allowed_agents(session, manager, message or "")
+    allowed_agents, initial_allowed_names, visible_limit = _determine_allowed_agents(
+        session, manager, message or ""
+    )
+    allowed_name_set = set(initial_allowed_names)
     cleanup = _configure_groupchat(manager, user, allowed_agents)
 
     def run_chat() -> None:
@@ -435,6 +448,8 @@ def send_message_stream():
 
     thread = threading.Thread(target=run_chat)
     thread.start()
+
+    delivered_order: List[str] = []
 
     def generate():
         nonlocal idx
@@ -447,16 +462,16 @@ def send_message_stream():
                 while idx < len(messages):
                     current = messages[idx]
                     idx += 1
-                    if current.get("name") == user.name:
-                        continue
                     name = current.get("name")
-                    if name not in allowed_name_set:
-                        progressed = True
+                    if not name or name == user.name:
                         continue
+                    allowed_name_set.add(name)
                     for segment in split_content(current.get("content", "")):
                         data = json.dumps({"name": name, "content": segment}, ensure_ascii=False)
                         yield f"data: {data}\n\n"
                         reply_count += 1
+                        if name not in delivered_order:
+                            delivered_order.append(name)
                     progressed = True
 
                 if reply_count >= visible_limit:
@@ -475,6 +490,16 @@ def send_message_stream():
                 thread.join(timeout=0.2)
             last_index = min(idx, len(manager.groupchat.messages))
             session["last"] = last_index
+            if delivered_order:
+                ordered = session.get("allowed_names", []) or []
+                seen = set(ordered)
+                extras: List[str] = []
+                for name in delivered_order:
+                    if name not in seen:
+                        seen.add(name)
+                        extras.append(name)
+                if extras:
+                    session["allowed_names"] = ordered + extras
             cleanup()
 
     response = Response(stream_with_context(generate()), mimetype="text/event-stream")

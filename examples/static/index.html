@@ -656,12 +656,25 @@ async function sendMessage() {
     while (true) {
       const { value, done } = await reader.read();
       if (done) {
+        const remaining = decoder.decode();
+        if (remaining) {
+          buf += remaining;
+        }
         break;
       }
       buf += decoder.decode(value, { stream: true });
       const parts = buf.split('\n\n');
       buf = parts.pop();
       for (const part of parts) {
+        if (part.startsWith('data:')) {
+          const data = JSON.parse(part.slice(5));
+          appendMessage(data.name, data.content);
+        }
+      }
+    }
+    if (buf) {
+      const tailParts = buf.split('\n\n');
+      for (const part of tailParts) {
         if (part.startsWith('data:')) {
           const data = JSON.parse(part.slice(5));
           appendMessage(data.name, data.content);
