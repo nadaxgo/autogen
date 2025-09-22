@@ -30,6 +30,7 @@ LLM_CONFIG: Dict = {
 
 MAX_VISIBLE_REPLIES = 5
 MAX_GROUP_ROUNDS = 50
+MAX_BOT_REPLIES_PER_TURN = 24
 
 
 def build_manager(bots: List[str] | None = None) -> tuple[UserProxyAgent, GroupChatManager]:
@@ -242,7 +243,7 @@ def _determine_allowed_agents(
         allowed_agents = [agent_map[agent_order[0]]]
     allowed_names_ordered = [agent.name for agent in allowed_agents]
     allowed_name_set = set(allowed_names_ordered)
-    visible_limit = MAX_GROUP_ROUNDS
+    visible_limit = min(MAX_BOT_REPLIES_PER_TURN, MAX_GROUP_ROUNDS)
     session["allowed_names"] = allowed_names_ordered
     return allowed_agents, allowed_name_set, visible_limit
 
@@ -261,7 +262,9 @@ def _configure_groupchat(
     original_transitions = _clone_transitions(groupchat)
     participants = [user, *allowed_agents]
     groupchat.agents = participants
-    groupchat.max_round = max(1, len(allowed_agents))
+    target_rounds = max(2, len(allowed_agents) + 1)
+    max_round_cap = min(MAX_BOT_REPLIES_PER_TURN + 1, original_max_round)
+    groupchat.max_round = min(max_round_cap, target_rounds)
     groupchat.allowed_speaker_transitions_dict = {
         agent: [other for other in participants if other != agent]
         for agent in participants
