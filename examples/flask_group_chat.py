@@ -142,7 +142,7 @@ def build_manager(bots: List[str] | None = None) -> tuple[UserProxyAgent, GroupC
 
 
 def split_content(text: str) -> List[str]:
-    """Split LLM output into at most two lines."""
+    """Split LLM output into at most two trimmed lines."""
     parts = [p.strip() for p in text.strip().splitlines() if p.strip()]
     return parts[:2]
 
@@ -242,7 +242,7 @@ def _determine_allowed_agents(
         allowed_agents = [agent_map[agent_order[0]]]
     allowed_names_ordered = [agent.name for agent in allowed_agents]
     allowed_name_set = set(allowed_names_ordered)
-    visible_limit = MAX_VISIBLE_REPLIES
+    visible_limit = MAX_GROUP_ROUNDS
     session["allowed_names"] = allowed_names_ordered
     return allowed_agents, allowed_name_set, visible_limit
 
@@ -284,18 +284,23 @@ def _collect_replies(
 ) -> tuple[List[Dict[str, str]], int]:
     replies: List[Dict[str, str]] = []
     cutoff_index = start
+    reply_count = 0
     messages = manager.groupchat.messages
     for idx in range(start + 1, len(messages)):
         message = messages[idx]
         name = message.get("name")
         if not name or name == user_name:
             continue
-        for segment in split_content(message.get("content", "")):
-            replies.append({"name": name, "content": segment})
+        segments = split_content(message.get("content", ""))
+        if not segments:
+            continue
+        payload = "\n".join(segments)
+        replies.append({"name": name, "content": payload})
         if name not in allowed_name_set:
             allowed_name_set.add(name)
+        reply_count += 1
         cutoff_index = idx
-        if len(replies) >= visible_limit:
+        if reply_count >= visible_limit:
             break
 
     if cutoff_index + 1 < len(messages):
@@ -466,12 +471,15 @@ def send_message_stream():
                     if not name or name == user.name:
                         continue
                     allowed_name_set.add(name)
-                    for segment in split_content(current.get("content", "")):
-                        data = json.dumps({"name": name, "content": segment}, ensure_ascii=False)
-                        yield f"data: {data}\n\n"
-                        reply_count += 1
-                        if name not in delivered_order:
-                            delivered_order.append(name)
+                    segments = split_content(current.get("content", ""))
+                    if not segments:
+                        continue
+                    payload = "\n".join(segments)
+                    data = json.dumps({"name": name, "content": payload}, ensure_ascii=False)
+                    yield f"data: {data}\n\n"
+                    reply_count += 1
+                    if name not in delivered_order:
+                        delivered_order.append(name)
                     progressed = True
 
                 if reply_count >= visible_limit:
