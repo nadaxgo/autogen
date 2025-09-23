@@ -31,6 +31,7 @@ LLM_CONFIG: Dict = {
 MAX_VISIBLE_REPLIES = 5
 MAX_GROUP_ROUNDS = 50
 MAX_BOT_REPLIES_PER_TURN = 24
+MAX_REPLIES_PER_ROLE = 3
 
 
 def build_manager(bots: List[str] | None = None) -> tuple[UserProxyAgent, GroupChatManager]:
@@ -262,7 +263,7 @@ def _configure_groupchat(
     original_transitions = _clone_transitions(groupchat)
     participants = [user, *allowed_agents]
     groupchat.agents = participants
-    target_rounds = max(2, len(allowed_agents) + 1)
+    target_rounds = max(2, 1 + len(allowed_agents) * MAX_REPLIES_PER_ROLE)
     max_round_cap = min(MAX_BOT_REPLIES_PER_TURN + 1, original_max_round)
     groupchat.max_round = min(max_round_cap, target_rounds)
     groupchat.allowed_speaker_transitions_dict = {
@@ -288,11 +289,16 @@ def _collect_replies(
     replies: List[Dict[str, str]] = []
     cutoff_index = start
     reply_count = 0
+    per_role_counts: Dict[str, int] = {}
     messages = manager.groupchat.messages
     for idx in range(start + 1, len(messages)):
         message = messages[idx]
         name = message.get("name")
         if not name or name == user_name:
+            continue
+        per_role_counts.setdefault(name, 0)
+        if per_role_counts[name] >= MAX_REPLIES_PER_ROLE:
+            cutoff_index = idx
             continue
         segments = split_content(message.get("content", ""))
         if not segments:
@@ -301,6 +307,7 @@ def _collect_replies(
         replies.append({"name": name, "content": payload})
         if name not in allowed_name_set:
             allowed_name_set.add(name)
+        per_role_counts[name] += 1
         reply_count += 1
         cutoff_index = idx
         if reply_count >= visible_limit:
@@ -458,6 +465,7 @@ def send_message_stream():
     thread.start()
 
     delivered_order: List[str] = []
+    per_role_counts: Dict[str, int] = {}
 
     def generate():
         nonlocal idx
@@ -473,12 +481,17 @@ def send_message_stream():
                     name = current.get("name")
                     if not name or name == user.name:
                         continue
+                    per_role_counts.setdefault(name, 0)
+                    if per_role_counts[name] >= MAX_REPLIES_PER_ROLE:
+                        progressed = True
+                        continue
                     allowed_name_set.add(name)
                     segments = split_content(current.get("content", ""))
                     if not segments:
                         continue
                     payload = "\n".join(segments)
                     data = json.dumps({"name": name, "content": payload}, ensure_ascii=False)
+                    per_role_counts[name] += 1
                     yield f"data: {data}\n\n"
                     reply_count += 1
                     if name not in delivered_order:
