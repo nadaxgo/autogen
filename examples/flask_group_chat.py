@@ -8,10 +8,8 @@ import re
 import threading
 import time
 import uuid
-from typing import Callable, Dict, Iterable, List
-
+from typing import Callable, Dict, Iterable, List, Optional
 from flask import Flask, Response, jsonify, request, stream_with_context
-
 from autogen import AssistantAgent, GroupChat, GroupChatManager, UserProxyAgent
 
 LLM_CONFIG: Dict = {
@@ -32,6 +30,7 @@ MAX_VISIBLE_REPLIES = 5
 MAX_GROUP_ROUNDS = 50
 MAX_BOT_REPLIES_PER_TURN = 24
 MAX_REPLIES_PER_ROLE = 3
+MAX_CONTEXT_MESSAGES = 12
 
 
 def build_manager(bots: List[str] | None = None) -> tuple[UserProxyAgent, GroupChatManager]:
@@ -48,7 +47,7 @@ def build_manager(bots: List[str] | None = None) -> tuple[UserProxyAgent, GroupC
             "摆脱负面情绪；当用户遇到烦恼时第一时间开口，提出解决方案或"
             "积极建议，用鼓励和赞美把用户带出困境。多句回答请换行输出，"
             "保持每行只含一句话，避免长段落。回答时结合之前所有对话内容。"
-            "每轮回复控制在1到2行，emoji需与文字在同一行，不要单独成行。若队友已给出完整回应，你可以用一两句俏皮话收尾或暂时不插话。"
+            "每轮回复控制在1到2行，emoji需与文字在同一行，不要单独成行。记得直接接住用户或队友刚说的话，引用现场细节让气氛持续。若队友已给出完整回应，你可以用一两句俏皮话收尾或暂时不插话。"
         ),
         description="保持团队乐观积极的情绪管理员",
         llm_config=LLM_CONFIG,
@@ -62,8 +61,7 @@ def build_manager(bots: List[str] | None = None) -> tuple[UserProxyAgent, GroupC
             "频繁道歉或责怪自己。场景：聚焦于悲伤、压力、挫折等情境，先描摹用户情绪，再邀请他们继续说出心里的重量；如果"
             "对话整体轻松愉快，你可以只温柔地点出是否还有没说完的疲惫，或者选择把舞台留给队友。行动：用1到2句描绘感受的"
             "话语，必要时提供轻柔的陪伴或建议，让用户知道悲伤被允许。多句回答请换行输出，保持每行只含一句话，避免长段落。"
-            "回答时结合之前所有对话内容。每轮回复控制在1到2行，emoji需与文字在同一行，不要单独成行。若察觉用户状态平稳，"
-            "可以轻声一句或暂时沉默观察。"
+            "回答时结合之前所有对话内容。每轮回复控制在1到2行，emoji需与文字在同一行，不要单独成行。必要时也可以回应队友的观察，让用户知道你们在同一阵线。若察觉用户状态平稳，可以轻声一句或暂时沉默观察。"
         ),
         description="识别问题和潜在风险的情绪管理员",
         llm_config=LLM_CONFIG,
@@ -78,7 +76,7 @@ def build_manager(bots: List[str] | None = None) -> tuple[UserProxyAgent, GroupC
             "出现不公或拖沓时迅速指出问题，先追问事实、再平等狠批所有当事者，包含用户。行动：用户受到不"
             "公对待或遇到拖延时立即介入，先质问“你怎么忍的？”“他哪条做对了？”如果是用户态度不尊重，也要当面提醒“你自己也得守规矩”。然后才提出明确反击或改进方案，强调责任与时限。"
             "多句回答请换行输出，保持每行只含一句话，避免长段落。回答时结合之前所有对话内容。"
-            "每轮回复控制在1到2行，emoji需与文字在同一行，不要单独成行。绝不替任何人找借口，句子里直接点名责任人，让对话像同伴吐槽，而不是客服式回应。"
+            "每轮回复控制在1到2行，emoji需与文字在同一行，不要单独成行。绝不替任何人找借口，句子里直接点名责任人，让对话像同伴吐槽，而不是客服式回应。你也可以接上队友的观点，把矛头对准真正的问题。"
         ),
         description="维护公平和效率的情绪管理员",
         llm_config=LLM_CONFIG,
@@ -94,7 +92,7 @@ def build_manager(bots: List[str] | None = None) -> tuple[UserProxyAgent, GroupC
             "观点。行动：风险成为焦点时列出潜在后果并提供备选方案，若警告被"
             "忽视会持续提醒。多句回答请换行输出，保持每行只含一句话，避免长"
             "段落。回答时结合之前所有对话内容。"
-            "每轮回复控制在1到2行，emoji需与文字在同一行，不要单独成行。若风险已被覆盖，可以一句提示或暂缓发言。"
+            "每轮回复控制在1到2行，emoji需与文字在同一行，不要单独成行。可以顺着队友的提醒加上你的风险评估，若风险已被覆盖，可以一句提示或暂缓发言。"
         ),
         description="提醒注意安全与危险的情绪管理员",
         llm_config=LLM_CONFIG,
@@ -111,7 +109,7 @@ def build_manager(bots: List[str] | None = None) -> tuple[UserProxyAgent, GroupC
             "默认只嘲讽不救火，先冷冷吐槽、翻个白眼，除非被逼急才很敷衍地给一个“随便你”式建议。"
             "多句回答请换行输出，保持每行只含一句话，避免长段落。回答时结合之前所有对话内容。"
             "每轮回复控制在1到2行，emoji需与文字在同一行，不要单独成行。如若问题与品味无关，可以一句"
-            "淡漠点评或保持沉默；绝不要主动帮忙解决问题。"
+            "淡漠点评或保持沉默；绝不要主动帮忙解决问题。吐槽时也能顺带翻队友的白眼，让群像更有火花。"
         ),
         description="负责守护品味与界限的情绪管理员",
         llm_config=LLM_CONFIG,
@@ -209,6 +207,31 @@ def suggest_bots(text: str, agent_order: List[str], agent_map: Dict[str, Assista
     return ranked[: MAX_VISIBLE_REPLIES]
 
 
+def _compose_context_snapshot(
+    manager: GroupChatManager, user_name: str, latest_user_text: Optional[str]
+) -> str:
+    """Build a lightweight text snapshot of recent dialogue for agent selection."""
+
+    snippets: List[str] = []
+    messages = manager.groupchat.messages
+    for message in messages[-MAX_CONTEXT_MESSAGES:]:
+        content = message.get("content")
+        if not content or isinstance(content, (list, dict)):
+            continue
+        name = message.get("name") or message.get("role") or ""
+        if not name:
+            continue
+        label = name
+        if label == user_name:
+            label = "用户"
+        elif label == "assistant":
+            label = "系统"
+        snippets.append(f"{label}:{content}")
+    if latest_user_text:
+        snippets.append(f"用户:{latest_user_text}")
+    return "\n".join(snippets)
+
+
 def _ensure_agent_registry(session: Dict[str, object], manager: GroupChatManager) -> tuple[Dict[str, AssistantAgent], List[str]]:
     agent_map = session.get("agent_map")
     agent_order = session.get("agent_order")
@@ -234,8 +257,23 @@ def _determine_allowed_agents(
             history.append(text)
             if len(history) > 10:
                 del history[:-10]
+    user_agent: UserProxyAgent = session.get("user")
     context_window = " ".join(history[-4:])
-    allowed_names = suggest_bots(context_window or text, agent_order, agent_map)
+    context_snapshot = _compose_context_snapshot(manager, user_agent.name if user_agent else "用户", text)
+    context_basis = context_snapshot or context_window or text
+    allowed_names = suggest_bots(context_basis, agent_order, agent_map)
+    recent_speakers: List[str] = []
+    for entry in reversed(manager.groupchat.messages):
+        name = entry.get("name")
+        if not name or (user_agent and name == user_agent.name):
+            continue
+        if name not in recent_speakers:
+            recent_speakers.append(name)
+        if len(recent_speakers) >= 3:
+            break
+    for speaker_name in recent_speakers:
+        if speaker_name not in allowed_names:
+            allowed_names.append(speaker_name)
     if not allowed_names and agent_order:
         allowed_names = [agent_order[0]]
     allowed_agents = [agent_map[name] for name in agent_order if name in allowed_names]
