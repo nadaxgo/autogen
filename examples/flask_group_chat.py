@@ -35,7 +35,7 @@ MAX_CONTEXT_MESSAGES = 12
 
 def build_manager(bots: List[str] | None = None) -> tuple[UserProxyAgent, GroupChatManager]:
     """Create a group chat manager with Inside Out-style agents."""
-     joy = AssistantAgent(
+    joy = AssistantAgent(
         name="乐乐",
         system_message=(
             "你是乐乐，团队的快乐核心与气氛担当。你的任务是：无论情况多糟，都要第一个冲出来，用你无尽的乐观和活力感染所有人！"
